@@ -1,10 +1,12 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import { Inter, Space_Grotesk, Geist_Mono } from "next/font/google";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthInitializer } from "@/components/AuthInitializer";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { clerkAppearance } from "@/lib/clerkAppearance";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -28,12 +30,20 @@ export const metadata: Metadata = {
 
 };
 
+// When the on-screen keyboard opens, shrink the page to the space left above it (Chrome on Android) instead of leaving the
+// page full height and scrolling it up behind the keyboard to reach the focused field. Layouts size themselves with
+// `dvh`, which follows this.
+export const viewport: Viewport = {
+  interactiveWidget: "resizes-content",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
+    <ClerkProvider signInUrl="/auth/login" signUpUrl="/auth/register" appearance={clerkAppearance}>
     <html
       lang="en"
       suppressHydrationWarning
@@ -48,5 +58,6 @@ export default function RootLayout({
         </ThemeProvider>
       </body>
     </html>
+    </ClerkProvider>
   );
 }

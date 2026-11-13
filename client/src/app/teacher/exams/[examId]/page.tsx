@@ -205,7 +205,7 @@ export default function EditExamBuilder() {
     </div>
   );
 
-  const buildShell = (parts: WorkspaceParts) => <WorkspaceShell header={header} left={parts.left} right={parts.right} footer={parts.footer} fill={parts.fill} />;
+  const buildShell = (parts: WorkspaceParts) => <WorkspaceShell header={header} left={parts.left} right={parts.right} footer={parts.footer} fill={parts.fill} bare={parts.bare} />;
   const rememberBuildMode = (mode: CreationMode | null) => {
     setBuildMode(mode);
     try {
@@ -249,6 +249,7 @@ export default function EditExamBuilder() {
           )
         }
         fill={showReview}
+        bare
         footer={
           showReview ? (
             <Button variant="ghost" onClick={() => setShowReview(false)} className={ghostButton}>
@@ -257,8 +258,8 @@ export default function EditExamBuilder() {
           ) : (
             <>
               <span />
-              <Button onClick={goToPublish} className={primaryButton}>
-                Next: Publish Settings <ArrowRight className="h-4 w-4 ml-2" />
+              <Button onClick={goToPublish} className={`${primaryButton} whitespace-nowrap px-4 sm:px-6`}>
+                <span className="sm:hidden">Publish Settings</span><span className="hidden sm:inline">Next: Publish Settings</span> <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
             </>
           )
@@ -271,14 +272,40 @@ export default function EditExamBuilder() {
         header={header}
         left={
           <div className="space-y-10">
-            <p className="text-xs text-gray-400">
-              {sections.length} section{sections.length === 1 ? "" : "s"} · {questionCount} question{questionCount === 1 ? "" : "s"} · {totalMarks} marks
-              {joinCode && (
-                <>
-                  {" "}· Join code <span className="font-mono font-semibold text-white">{joinCode}</span>
-                </>
-              )}
-            </p>
+            {joinCode && (
+              <p className="text-xs text-gray-400">
+                Join code <span className="font-mono font-semibold text-white">{joinCode}</span>
+              </p>
+            )}
+
+            {/* Exam summary: a small table with each section's questions and marks, then the totals. */}
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-gray-300">Exam summary</h3>
+              <div className="divide-y divide-white/5 text-sm">
+                <div className="grid grid-cols-[1fr_4.5rem_3.5rem] items-center gap-2 pb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  <span>Section</span>
+                  <span className="text-right">Questions</span>
+                  <span className="text-right">Marks</span>
+                </div>
+                {sections.map((s, i) => {
+                  const n = s.questions?.length || 0;
+                  const marks = (s.questions || []).reduce((m: number, q: any) => m + (Number(q.marks) || 0), 0);
+                  return (
+                    <div key={s.id ?? s._id ?? i} className="grid grid-cols-[1fr_4.5rem_3.5rem] items-center gap-2 py-2 text-gray-300">
+                      <span className="min-w-0 truncate">{s.title || `Section ${i + 1}`}</span>
+                      <span className="text-right tabular-nums">{n}</span>
+                      <span className="text-right tabular-nums">{marks}</span>
+                    </div>
+                  );
+                })}
+                <div className="grid grid-cols-[1fr_4.5rem_3.5rem] items-center gap-2 py-2 font-semibold text-white">
+                  <span>Total</span>
+                  <span className="text-right tabular-nums">{questionCount}</span>
+                  <span className="text-right tabular-nums">{totalMarks}</span>
+                </div>
+              </div>
+            </div>
+
             <ExamDetailsForm values={details} onChange={(patch) => setDetails((prev) => ({ ...prev, ...patch }))} />
             <div className="space-y-2">
               <label className="text-sm font-semibold text-gray-300">Publish Date & Time</label>
@@ -287,9 +314,11 @@ export default function EditExamBuilder() {
             </div>
           </div>
         }
+        bare
         footer={
           <>
-            <Button variant="ghost" onClick={() => setPhase("questions")} className={ghostButton}>
+            {/* One row on phones: Back on the left, Save and Publish on the right (shorter labels there). */}
+            <Button variant="ghost" onClick={() => setPhase("questions")} className={`${ghostButton} whitespace-nowrap px-1 sm:px-4`}>
               <ArrowLeft className="h-4 w-4 mr-1.5" /> Back
             </Button>
             <div className="flex items-center gap-2">
@@ -297,13 +326,19 @@ export default function EditExamBuilder() {
                 variant="outline"
                 onClick={() => handleSaveExam()}
                 disabled={isSaving}
-                className="bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20 h-10 text-sm font-semibold"
+                className="bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20 h-10 px-3 sm:px-4 whitespace-nowrap text-sm font-semibold"
               >
                 {isPublished ? "Save changes" : "Save as Draft"}
               </Button>
               {!isPublished && (
-                <Button onClick={() => handleSaveExam("PUBLISHED")} disabled={isSaving} className="bg-green-600 hover:bg-green-700 text-white h-10 px-6 font-bold text-sm rounded-xl">
-                  {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : publishTime ? "Schedule & Publish" : "Publish Exam"}
+                <Button onClick={() => handleSaveExam("PUBLISHED")} disabled={isSaving} className="bg-green-600 hover:bg-green-700 text-white h-10 px-4 sm:px-6 whitespace-nowrap font-bold text-sm rounded-xl">
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : publishTime ? (
+                    <><span className="sm:hidden">Schedule</span><span className="hidden sm:inline">Schedule & Publish</span></>
+                  ) : (
+                    <><span className="sm:hidden">Publish</span><span className="hidden sm:inline">Publish Exam</span></>
+                  )}
                 </Button>
               )}
             </div>
@@ -315,13 +350,13 @@ export default function EditExamBuilder() {
 
   return (
     <div className="flex flex-col gap-3 lg:h-full lg:min-h-0">
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex items-center gap-3 shrink-0 pt-3 sm:pt-4">
         <button
           onClick={() => router.push(`/teacher/exams`)}
           aria-label="Back to exams"
-          className="flex items-center justify-center p-2 rounded-lg bg-[#18181b] border border-white/10 hover:bg-white/10 hover:text-white transition-colors text-gray-400"
+          className="inline-flex items-center gap-2 py-1.5 pl-1 pr-3 text-base font-semibold text-gray-300 hover:text-white transition-colors"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-5 w-5" /> Back
         </button>
       </div>
       <div className="flex-1 lg:min-h-0">{content}</div>

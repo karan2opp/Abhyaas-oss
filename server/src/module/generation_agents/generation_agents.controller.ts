@@ -27,6 +27,8 @@ import { rescaleSection, sectionTotal } from "./blueprint_edit_ops.js";
 import { z } from "zod";
 import { ApiError } from "../../common/utils/ApiError.js";
 import { getUsableBook } from "../books/book_retrieval.js";
+import { assertQuota, recordUsage } from "../plans/quota.service.js";
+import { countBlueprintQuestions } from "./allocation.js";
 import { openEventStream, sendStreamError, type EventStream } from "../../common/http/sse.js";
 
 const ConversationTurnRequestZodSchema = z.object({
@@ -461,6 +463,10 @@ export const triggerQuestionGenerationHandler = async (req: Request, res: Respon
             throw ApiError.badRequest("Blueprint is not ready yet");
         }
 
+        // Refused before anything starts if the plan can't cover every question in the plan. What is actually produced is
+        // recorded when each section is saved (see the generation function).
+        await assertQuota(req.user!.id, "question_generation", countBlueprintQuestions(sectionsOverride ?? session.blueprint.sections));
+
         if (sectionsOverride) {
             await updateBlueprint(session.id, { sections: sectionsOverride });
         }
@@ -518,7 +524,9 @@ export const generateTopicQuestionsHandler = async (req: Request, res: Response,
             const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
             throw ApiError.badRequest(`Invalid request body: ${issues}`);
         }
+        await assertQuota(req.user!.id, "question_generation", parsed.data.subtopics.reduce((n, s) => n + s.count, 0));
         const output = await generateTopicQuestions(parsed.data);
+        await recordUsage(req.user!.id, "question_generation", output.questions.length);
         res.status(200).json({ success: true, data: output });
     } catch (error) {
         next(error);

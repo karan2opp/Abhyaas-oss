@@ -284,7 +284,6 @@ export interface DescriptiveGeneratedQuestion {
   topic: string;
   subtopic: string;
   question_text: string;
-  rubric: Rubric;
   marks: number;
   content_blocks: QuestionContentBlock[];
 }

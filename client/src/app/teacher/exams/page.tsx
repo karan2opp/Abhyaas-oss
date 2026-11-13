@@ -183,35 +183,11 @@ export default function ExamsPage() {
           {exams.map((e) => (
             <div
               key={e.id}
-              className="bg-[#12131a] border border-white/10 hover:border-orange-500/50 rounded-2xl p-6 relative flex flex-col justify-between shadow-2xl transition-all duration-300 group"
+              className="bg-[#12131a] border border-white/10 hover:border-orange-500/50 rounded-2xl p-4 sm:p-6 relative flex flex-col justify-between shadow-2xl transition-all duration-300 group"
             >
               <div>
-                {/* Top Badges: Status & Max Marks */}
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <span className="text-xs font-semibold text-zinc-400">
-                    {e.type === "SCHEDULED" ? "Scheduled (Fixed Time)" : "On-Demand (Flexible)"}
-                  </span>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => handleTogglePublish(e.id, (e as any).status)}
-                      title="Click to toggle Published / Draft status"
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider border transition-all hover:scale-105 cursor-pointer whitespace-nowrap shrink-0 ${
-                        (e as any).status === "PUBLISHED"
-                          ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25"
-                          : "bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25"
-                      }`}
-                    >
-                      {(e as any).status === "PUBLISHED" ? "Published" : "Draft"}
-                    </button>
-                    <span className="bg-[#2d1e0f] text-orange-400 border border-orange-500/30 px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide whitespace-nowrap shrink-0">
-                      Max Marks {e.totalMarks || 100}
-                    </span>
-                  </div>
-                </div>
-
                 {/* Main Title */}
-                <h3 className="text-2xl font-extrabold text-white tracking-tight mb-1.5 leading-snug" title={e.title}>
+                <h3 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight mb-1.5 leading-snug" title={e.title}>
                   {e.title}
                 </h3>
 
@@ -220,7 +196,7 @@ export default function ExamsPage() {
                 </p>
 
                 {/* Timeline Section */}
-                <div className="space-y-2.5 mb-6 text-sm bg-[#14151f] border-white/15 text-white placeholder:text-zinc-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/30/40 p-4 rounded-xl border border-white/5">
+                <div className="space-y-2.5 mb-5 text-sm text-white">
                   <div className="flex items-center gap-2 text-zinc-200 font-semibold mb-1">
                     <Clock className="h-4.5 w-4.5 text-orange-400 shrink-0" />
                     <span className="text-sm">Timeline & Details</span>
@@ -235,40 +211,50 @@ export default function ExamsPage() {
                     <p className="text-zinc-400">
                       • Duration: <span className="text-orange-300 font-medium">{e.duration} mins</span>
                     </p>
+                    <p className="text-zinc-400">
+                      • Status:{" "}
+                      <button
+                        onClick={() => handleTogglePublish(e.id, (e as any).status)}
+                        title="Click to toggle Published / Draft status"
+                        className={`font-medium cursor-pointer hover:underline underline-offset-2 ${
+                          (e as any).status === "PUBLISHED" ? "text-emerald-300" : "text-amber-300"
+                        }`}
+                      >
+                        {(e as any).status === "PUBLISHED" ? "Published" : "Draft"}
+                      </button>
+                    </p>
                   </div>
                 </div>
               </div>
 
               {/* Actions Bottom Bar */}
-              <div className="flex items-center justify-between pt-4 border-t border-white/10 mt-2">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <Button
-                    size="sm"
-                    className="bg-zinc-800/90 hover:bg-zinc-700 text-white border border-zinc-700 text-sm font-semibold px-3.5 py-2 rounded-xl transition-all"
-                    onClick={() => router.push(`/teacher/exams/${e.id}`)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-zinc-800/90 hover:bg-zinc-700 text-orange-300 hover:text-white border border-orange-500/30 text-sm font-semibold px-3.5 py-2 rounded-xl transition-all"
-                    onClick={() => setPreviewExamId(e.id)}
-                  >
-                    <Eye className="mr-1.5 h-4 w-4 text-orange-400" /> Preview
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-orange-600 hover:bg-orange-700 text-white font-semibold text-sm px-4 py-2 rounded-xl shadow-md shadow-orange-950/40 transition-all"
-                    onClick={() => router.push(`/teacher/exams/${e.id}/results`)}
-                  >
-                    Results
-                  </Button>
-                </div>
-
+              {/* Even 2 x 2 grid: Edit / Preview on top, Results / Delete below. */}
+              <div className="grid grid-cols-2 gap-2 pt-4 border-t border-white/10 mt-2">
+                <Button
+                  size="sm"
+                  className="h-9 w-full bg-zinc-800/90 hover:bg-zinc-700 text-white border border-zinc-700 text-sm font-semibold rounded-xl transition-all"
+                  onClick={() => router.push(`/teacher/exams/${e.id}`)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-9 w-full bg-zinc-800/90 hover:bg-zinc-700 text-orange-300 hover:text-white border border-orange-500/30 text-sm font-semibold rounded-xl transition-all"
+                  onClick={() => setPreviewExamId(e.id)}
+                >
+                  <Eye className="mr-1.5 h-4 w-4 text-orange-400" /> Preview
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-9 w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold text-sm rounded-xl shadow-md shadow-orange-950/40 transition-all"
+                  onClick={() => router.push(`/teacher/exams/${e.id}/results`)}
+                >
+                  Results
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="bg-transparent border-red-500/20 text-red-400 hover:bg-red-500/10 shrink-0 h-9 rounded-xl font-semibold px-3.5"
+                  className="h-9 w-full bg-transparent border-red-500/20 text-red-400 hover:bg-red-500/10 rounded-xl font-semibold text-sm"
                   onClick={() => handleDeleteExam(e.id, e.title)}
                   title="Delete exam"
                 >

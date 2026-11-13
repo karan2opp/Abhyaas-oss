@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import pLimit from "p-limit";
 import { inngest } from "../../../common/inngest/client.js";
+import { bindAiUser } from "../../../common/agent/ai_context.js";
+import { toAiKeyApiError } from "../../ai_keys/ai_key.service.js";
 import { extractPdf } from "../../../common/pdf/pdf_python_bridge.js";
 import { uploadToCloudinary } from "../../../common/config/cloudinary.js";
 import { chunkQuestionBankDocument, type QuestionBankRawChunk } from "../question_bank_chunker.js";
@@ -40,6 +42,9 @@ export const processQuestionBankDocumentFunction = inngest.createFunction(
     },
     async ({ event, step }) => {
         const documentId = event.data.documentId as string;
+        // Reading and indexing this document uses AI, billed to the teacher who uploaded it, with their own key.
+        const owner = (await getDocument(documentId))?.createdBy;
+        if (owner) bindAiUser(owner);
 
         let tmpDir: string | null = null;
 
@@ -165,7 +170,8 @@ export const processQuestionBankDocumentFunction = inngest.createFunction(
                 console.log(`[question-bank] document ${documentId} completed with ${totalChunks} chunk(s)`);
             });
         } catch (err: any) {
-            await markDocumentFailed(documentId, err?.message || "Unknown error processing document");
+            const keyProblem = await toAiKeyApiError(err);
+            await markDocumentFailed(documentId, keyProblem?.message || err?.message || "Unknown error processing document");
             throw err;
         } finally {
             if (tmpDir) await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});

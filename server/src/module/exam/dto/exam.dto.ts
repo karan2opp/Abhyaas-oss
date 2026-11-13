@@ -48,6 +48,7 @@ export const updateExamSchema = z.object({
   requireFeedback: z.boolean().optional(),
   publishTime: z.coerce.date().nullable().optional(),
   status: z.enum(["DRAFT", "PUBLISHED"]).optional(),
+  evaluationScheme: z.string().trim().max(4000, { message: "The evaluation scheme cannot exceed 4000 characters" }).nullable().optional(),
 }).refine(data => {
   if (data.type === "SCHEDULED" || (!data.type && data.startTime && data.endTime)) {
     if (data.startTime && data.endTime) {

@@ -1,10 +1,13 @@
 export class ApiError extends Error {
     public readonly statusCode: number;
     public readonly isOperational: boolean;
+    // A short machine-readable reason (for example "AI_KEY_REQUIRED") the website can act on, besides the readable message.
+    public readonly code: string | undefined;
 
-    constructor(statusCode: number, message: string) {
+    constructor(statusCode: number, message: string, code?: string) {
         super(message);
         this.statusCode = statusCode;
+        this.code = code;
         this.isOperational = true; // Indicates it's a known, handled error
         Error.captureStackTrace(this, this.constructor);
     }

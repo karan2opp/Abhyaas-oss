@@ -1,11 +1,34 @@
 import dotenv from "dotenv";
+import { env } from "../../env.js";
+import { currentAiUserId } from "./ai_context.js";
+import { getUserOpenAiKey } from "../../module/ai_keys/ai_key.service.js";
 
 dotenv.config();
 
 let openaiClient: any = null;
 let mistralClient: any = null;
 
+// One client per person (bring your own key), reused while their key stays the same.
+const userClients = new Map<string, { apiKey: string; client: any }>();
+const MAX_USER_CLIENTS = 500;
+
 const getOpenAI = async () => {
+    // "byok": the call is billed to the key of the person it is for. The server's own OPENAI_API_KEY is never used here, so
+    // a call that has no key stops with a readable error instead of quietly running on your account.
+    if (env.AI_KEY_MODE === "byok") {
+        const userId = currentAiUserId();
+        if (!userId) throw new Error("An AI call was made with no account to bill it to (a code path is missing runAsAiUser / bindAiUser).");
+        const apiKey = await getUserOpenAiKey(userId);
+        const cached = userClients.get(userId);
+        if (cached && cached.apiKey === apiKey) return cached.client;
+
+        const openai = (await import("openai")).default;
+        const client = new openai.OpenAI({ apiKey });
+        if (userClients.size >= MAX_USER_CLIENTS) userClients.delete(userClients.keys().next().value as string);
+        userClients.set(userId, { apiKey, client });
+        return client;
+    }
+
     if (openaiClient) return openaiClient;
     const API_KEY = process.env.OPENAI_API_KEY;
     if (!API_KEY) {

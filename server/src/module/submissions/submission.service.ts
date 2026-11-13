@@ -1,12 +1,15 @@
-import { eq, and, isNull, desc, or, ilike, gte, count, inArray } from "drizzle-orm";
-import pLimit from "p-limit";
+import { eq, and, isNull, desc, or, ne, ilike, gte, count, inArray } from "drizzle-orm";
 import db from "../../common/db/index.js";
 import { submissions, examRegistrations, exams, answers, options, questions, sections, users } from "../../common/db/schema.js";
 import { ApiError } from "../../common/utils/ApiError.js";
-import { evaluateAnswer, type TextAnswer, type ResponseMode } from "../evalutaion/evalutaion.js";
+import { evaluateAnswer, isBlankAnswer, type TextAnswer, type ResponseMode, type EvaluationOutcome } from "../evalutaion/evalutaion.js";
+import { gradeAnswers, type GradeGate, type GradeSummary } from "../evalutaion/grading.js";
 import type { GradeExamSubmissionDto, EvaluateWithAiDto } from "./dto/submission.dto.js";
-import { evaluationQueue } from "../../common/queue/queues.js";
+import { enqueueEvaluation } from "../../common/queue/queues.js";
 import type { Requester } from "../../common/permissions/index.js";
+import { assertQuota, recordUsage, remainingQuota } from "../plans/quota.service.js";
+import { runAsAiUser } from "../../common/agent/ai_context.js";
+import { hasUsableAiKey, toAiKeyApiError } from "../ai_keys/ai_key.service.js";
 
 // ── Whether a teacher has staff-level access to an exam (only its creator) ───
 const hasStaffAccessToExam = async (requester: Requester, exam: typeof exams.$inferSelect): Promise<boolean> => {
@@ -34,39 +37,106 @@ const assertCanManageExamSubmissions = async (requester: Requester, examId: stri
     return exam;
 };
 
-// ── Run AI evaluation for a batch of descriptive answers and persist the results ─
-// Writes evaluatedBy: "ai" — callers are responsible for excluding any answer
-// that has already been manually graded by a teacher (evaluatedBy === "teacher"),
-// so AI evaluation can never overwrite a manual grade.
-const runAndPersistAiEvaluation = async (textAnswersToEvaluate: TextAnswer[], mode: ResponseMode): Promise<number> => {
-    const limit = pLimit(3);
-    const results = await Promise.all(textAnswersToEvaluate.map((answer) => limit(() => evaluateAnswer(answer))));
+// ── Grading descriptive answers ───────────────────────────────────────────────
+// Every answer is graded and saved on its own, the moment it finishes. One answer failing never throws away the others, and
+// a retry of the job only redoes what is still ungraded (see buildTextAnswersForEvaluation).
+// Writes evaluatedBy: "ai" — and never touches an answer a teacher has graded by hand, even one graded while the AI was working.
+const saveExamAnswer = async (answer: TextAnswer, result: EvaluationOutcome) => {
+    await db.update(answers)
+        .set({
+            isCorrect: result.marksAwarded === answer.maxMarks,
+            marksAwarded: result.marksAwarded,
+            feedback: result.feedback,
+            evaluatedBy: "ai",
+            updatedAt: new Date(),
+        })
+        .where(and(eq(answers.id, answer.answerId), or(isNull(answers.evaluatedBy), ne(answers.evaluatedBy, "teacher"))));
+};
 
-    for (let i = 0; i < textAnswersToEvaluate.length; i++) {
-        const answer = textAnswersToEvaluate[i]!;
-        const result = results[i]!;
-        await db.update(answers)
-            .set({
-                isCorrect: result.marksAwarded === answer.maxMarks,
-                marksAwarded: result.marksAwarded,
-                feedback: result.feedback,
-                evaluatedBy: "ai",
-            })
-            .where(eq(answers.id, answer.answerId));
+// ── AI-grade answers as far as the exam owner's plan allows ──────────────────────
+// Used when a student submits. Grading is charged to the teacher who owns the exam. Answers beyond what their plan covers
+// are not graded by AI: they are left without marks, with a note the student can read, for the teacher to grade by hand.
+const NOT_GRADED_NOTE = "This answer was not graded by AI because the teacher's plan has no AI grading left. Your teacher will grade it.";
+// Same, when people use their own OpenAI key and the teacher's key is missing, rejected or out of credit.
+const NOT_GRADED_KEY_NOTE = "This answer was not graded by AI because the teacher's AI key isn't working right now. Your teacher will grade it.";
+// Same, when grading kept failing for another reason.
+const NOT_GRADED_FAILED_NOTE = "This answer could not be graded automatically. Your teacher will grade it.";
+
+const leaveForTeacher = async (textAnswers: TextAnswer[], note: string) => {
+    for (const answer of textAnswers) {
+        await db.update(answers).set({ feedback: note, updatedAt: new Date() }).where(eq(answers.id, answer.answerId));
+    }
+};
+
+// Answers being graded for a teacher right now, so that many students submitting at once cannot each be told "there is
+// quota left" by the same stale number: every place claimed is counted until its use has been recorded.
+const gradingInFlight = new Map<string, number>();
+
+const ownerGate = (ownerId: string): GradeGate => {
+    const release = () => {
+        const n = (gradingInFlight.get(ownerId) ?? 1) - 1;
+        if (n <= 0) gradingInFlight.delete(ownerId);
+        else gradingInFlight.set(ownerId, n);
+    };
+    return {
+        async claim() {
+            gradingInFlight.set(ownerId, (gradingInFlight.get(ownerId) ?? 0) + 1);
+            const remaining = await remainingQuota(ownerId, "ai_grading");
+            const others = (gradingInFlight.get(ownerId) ?? 1) - 1;
+            if (remaining === null || remaining - others > 0) return true;
+            release();
+            return false;
+        },
+        charge: () => recordUsage(ownerId, "ai_grading", 1),
+        release,
+    };
+};
+
+const throwFirstFailure = (summary: GradeSummary) => {
+    if (summary.failures.length > 0) throw summary.failures[0];
+};
+
+export const gradeWithinQuota = async (examId: string, textAnswers: TextAnswer[], mode: ResponseMode): Promise<void> => {
+    const blanks = textAnswers.filter((a) => isBlankAnswer(a.studentAnswer));
+    const written = textAnswers.filter((a) => !isBlankAnswer(a.studentAnswer));
+    await gradeAnswers(blanks, mode, saveExamAnswer);
+
+    const [exam] = await db.select({ createdBy: exams.createdBy }).from(exams).where(eq(exams.id, examId));
+    if (!exam) {
+        throwFirstFailure(await gradeAnswers(written, mode, saveExamAnswer));
+        return;
     }
 
-    return results.reduce((sum, r) => sum + (r.marksAwarded || 0), 0);
+    // Grading is paid for by the teacher who owns the exam, never by the student who submitted. With people's own OpenAI keys
+    // that means the teacher's key. Without a working one nothing is sent to OpenAI: the answers wait for the teacher, who
+    // can grade them by hand or run AI grading again once the key is fixed.
+    if (!(await hasUsableAiKey(exam.createdBy))) {
+        await leaveForTeacher(written, NOT_GRADED_KEY_NOTE);
+        return;
+    }
+
+    const summary = await runAsAiUser(exam.createdBy, () => gradeAnswers(written, mode, saveExamAnswer, ownerGate(exam.createdBy)));
+    await leaveForTeacher(summary.outOfQuota, NOT_GRADED_NOTE);
+    // OpenAI turned the teacher's key down partway: leave the rest for the teacher instead of failing the submission.
+    await leaveForTeacher(summary.keyRejected, NOT_GRADED_KEY_NOTE);
+    throwFirstFailure(summary);
 };
 
 // ── Build the list of descriptive answers eligible for AI evaluation ───────────
-// Skips any answer already graded by a teacher, so AI never overwrites a manual grade.
-const buildTextAnswersForEvaluation = async (submissionId: string): Promise<TextAnswer[]> => {
+// Skips any answer already graded by a teacher, so AI never overwrites a manual grade. With `skipAiGraded` it also skips
+// answers the AI has already marked, which is what lets a retried job carry on where it stopped instead of starting over.
+const buildTextAnswersForEvaluation = async (submissionId: string, options: { skipAiGraded?: boolean } = {}): Promise<TextAnswer[]> => {
     const submissionAnswers = await db.select().from(answers).where(eq(answers.submissionId, submissionId));
+
+    const questionIds = [...new Set(submissionAnswers.map((a) => a.questionId))];
+    const questionRows = questionIds.length > 0 ? await db.select().from(questions).where(inArray(questions.id, questionIds)) : [];
+    const questionById = new Map(questionRows.map((q) => [q.id, q]));
 
     const textAnswersToEvaluate: TextAnswer[] = [];
     for (const answer of submissionAnswers) {
         if (answer.evaluatedBy === "teacher") continue;
-        const [question] = await db.select().from(questions).where(eq(questions.id, answer.questionId));
+        if (options.skipAiGraded && answer.evaluatedBy === "ai" && answer.marksAwarded !== null) continue;
+        const question = questionById.get(answer.questionId);
         if (!question || question.type !== "descriptive") continue;
         textAnswersToEvaluate.push({
             answerId: answer.id,
@@ -83,26 +153,52 @@ const buildTextAnswersForEvaluation = async (submissionId: string): Promise<Text
     return textAnswersToEvaluate;
 };
 
-// ── Evaluate a submission's descriptive answers (called by the BullMQ worker) ──
-// Re-fetches answers from the DB, runs the multi-round AI evaluation, and marks
-// the submission as submitted with the recomputed total score.
-export const evaluateDescriptiveAnswers = async (submissionId: string, mode: string): Promise<void> => {
-    const [submission] = await db.select().from(submissions).where(eq(submissions.id, submissionId));
-    if (!submission) throw ApiError.notFound("Submission not found");
+// Whether the exam's grading guides (rubrics) are still being written. Answers are not graded until they are ready.
+const rubricsArePending = async (examId: string): Promise<boolean> => {
+    const [exam] = await db.select({ rubricStatus: exams.rubricStatus }).from(exams).where(eq(exams.id, examId));
+    return exam?.rubricStatus === "pending";
+};
 
-    const textAnswersToEvaluate = await buildTextAnswersForEvaluation(submissionId);
-
-    if (textAnswersToEvaluate.length > 0) {
-        const evalMode: ResponseMode = (mode === "detailed" || mode === "marks_and_feedback") ? "marks_and_feedback" : "marks_only";
-        await runAndPersistAiEvaluation(textAnswersToEvaluate, evalMode);
-    }
-
+// Adds up a submission's marks and marks it as done.
+const finishSubmission = async (submissionId: string) => {
     const allAnswers = await db.select().from(answers).where(eq(answers.submissionId, submissionId));
     const totalScore = allAnswers.reduce((sum, a) => sum + (a.marksAwarded ?? 0), 0);
 
-    await db.update(submissions)
+    const [updated] = await db.update(submissions)
         .set({ status: "submitted", score: totalScore, updatedAt: new Date() })
-        .where(eq(submissions.id, submissionId));
+        .where(eq(submissions.id, submissionId))
+        .returning();
+    return updated;
+};
+
+// ── Evaluate a submission's descriptive answers (called by the BullMQ worker) ──
+// Re-fetches answers from the DB, grades the ones still ungraded, and marks the submission as submitted with the recomputed
+// total score. If some answers fail it throws after saving the rest, so the job retries only what is missing.
+export const evaluateDescriptiveAnswers = async (submissionId: string, mode?: string): Promise<void> => {
+    const [submission] = await db.select().from(submissions).where(eq(submissions.id, submissionId));
+    if (!submission) throw ApiError.notFound("Submission not found");
+
+    // The exam's grading guides are still being written: leave the submission "evaluating". It is queued again as soon as
+    // they are ready (see releaseWaitingEvaluations), and the recovery sweep would also find it.
+    if (await rubricsArePending(submission.examId)) return;
+
+    const textAnswersToEvaluate = await buildTextAnswersForEvaluation(submissionId, { skipAiGraded: true });
+
+    if (textAnswersToEvaluate.length > 0) {
+        const evalMode: ResponseMode = mode === "marks_only" ? "marks_only" : "marks_and_feedback";
+        await gradeWithinQuota(submission.examId, textAnswersToEvaluate, evalMode);
+    }
+
+    await finishSubmission(submissionId);
+};
+
+// ── Called when a grading job has used up all its tries ─────────────────────────
+// Whatever could not be graded is left for the teacher with a note, and the submission is finished, so a student is never
+// left waiting on "evaluating" for a result that is not coming.
+export const finalizeFailedEvaluation = async (submissionId: string): Promise<void> => {
+    const pending = await buildTextAnswersForEvaluation(submissionId, { skipAiGraded: true });
+    await leaveForTeacher(pending, NOT_GRADED_FAILED_NOTE);
+    await finishSubmission(submissionId);
 };
 
 // ── Shared: start (or resume) a submission for a resolved exam ─────────────────
@@ -213,11 +309,16 @@ const submitExam = async (submissionId: string, studentId: string, mode: string)
         .where(eq(submissions.id, submissionId))
         .returning();
 
-    if (queueEvaluation) {
-        await evaluationQueue.add("evaluate-submission", { submissionId, mode }, {
-            attempts: 3,
-            backoff: { type: "exponential", delay: 5000 },
-        });
+    // Checked after the status was saved: if the guides are still being written, the job that finishes them queues this
+    // submission (it looks for "evaluating" ones after marking the guides ready), so nothing is lost either way.
+    if (queueEvaluation && !(await rubricsArePending(submission.examId))) {
+        // The submission is already saved as "evaluating". If the queue cannot be reached right now, the student's submit
+        // still succeeded: the recovery sweep (workers.ts) queues it again within minutes.
+        try {
+            await enqueueEvaluation("evaluate-submission", { submissionId, mode: mode ?? "marks_and_feedback" });
+        } catch (err) {
+            console.error(`[Evaluation] Could not queue submission ${submissionId}; the recovery sweep will pick it up:`, err);
+        }
     }
 
     return updated;
@@ -285,21 +386,29 @@ const evaluateSubmissionWithAI = async (submissionId: string, data: EvaluateWith
 
     await assertCanManageExamSubmissions(requester, submission.examId);
 
+    if (await rubricsArePending(submission.examId)) {
+        throw new ApiError(409, "The grading guides for this exam are still being written. Try AI grading again in a minute.");
+    }
+
     const textAnswersToEvaluate = await buildTextAnswersForEvaluation(submissionId);
 
     if (textAnswersToEvaluate.length === 0) {
         throw ApiError.badRequest("No descriptive answers are eligible for AI evaluation (they may already be manually graded)");
     }
 
-    await runAndPersistAiEvaluation(textAnswersToEvaluate, data.mode);
+    // A teacher asking for AI grading is told plainly when their plan can't cover it, instead of grading part of it.
+    // Empty answers are marked 0 without AI, so they don't count.
+    await assertQuota(requester.id, "ai_grading", textAnswersToEvaluate.filter((a) => !isBlankAnswer(a.studentAnswer)).length);
+    const summary = await gradeAnswers(textAnswersToEvaluate, data.mode, saveExamAnswer, {
+        claim: async () => true,
+        charge: () => recordUsage(requester.id, "ai_grading", 1),
+        release: () => undefined,
+    });
 
-    const allAnswers = await db.select().from(answers).where(eq(answers.submissionId, submissionId));
-    const totalScore = allAnswers.reduce((sum, a) => sum + (a.marksAwarded ?? 0), 0);
-
-    const [updated] = await db.update(submissions)
-        .set({ status: "submitted", score: totalScore, updatedAt: new Date() })
-        .where(eq(submissions.id, submissionId))
-        .returning();
+    // Whatever was graded is kept and counted even when something failed, then the problem is reported.
+    const updated = await finishSubmission(submissionId);
+    if (summary.keyError) throw summary.keyError;
+    throwFirstFailure(summary);
 
     return updated;
 };

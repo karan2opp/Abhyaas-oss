@@ -6,6 +6,7 @@ import { ApiError } from "../../common/utils/ApiError.js";
 import type { CreateExamDto, UpdateExamDto } from "./dto/exam.dto.js";
 import { PermissionService, type Requester } from "../../common/permissions/index.js";
 import { generateJoinCode } from "../../common/utils/joinCode.js";
+import { scheduleRubrics } from "../rubrics/rubric.service.js";
 
 
 
@@ -349,6 +350,13 @@ const updateExam = async (examId: string, data: UpdateExamDto, requester: Reques
         })
         .where(eq(exams.id, examId))
         .returning();
+
+    // The grading guides of the written questions are written in the background: for an exam that has just been saved from
+    // the builder (its questions have none yet), and again from scratch when the teacher changes the evaluation scheme.
+    if (updated) {
+        const schemeChanged = data.evaluationScheme !== undefined && (data.evaluationScheme ?? null) !== (existing.evaluationScheme ?? null);
+        await scheduleRubrics(examId, { regenerateAll: schemeChanged });
+    }
 
     return updated;
 };

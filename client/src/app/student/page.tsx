@@ -105,18 +105,18 @@ export default function StudentDashboard() {
   return (
     <div className="p-4 sm:p-10 flex flex-col gap-8 h-full overflow-y-auto custom-scrollbar">
       <header>
-        <h2 className="text-3xl font-bold text-white tracking-tight">Student Dashboard</h2>
-        <p className="text-gray-400 mt-1">Join new exams and view your past performance.</p>
+        <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Student Dashboard</h2>
+        <p className="text-gray-400 mt-1 text-sm sm:text-base">Join new exams and view your past performance.</p>
       </header>
 
       {/* Join Exam Section */}
-      <div className="flex gap-4">
+      <div className="flex items-center gap-3 sm:gap-4">
         <input type="text" value={joinCode} onChange={(e) => setJoinCode(e.target.value)}
           placeholder="enter the join code"
-          className="text-white placeholder:text-zinc-400 text-white placeholder:text-gray-500 p-2.5 w-full max-w-sm transition-all rounded-none border-0 border-b border-white/20 bg-transparent px-0 transition-colors placeholder:text-zinc-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+          className="min-w-0 flex-1 text-sm sm:text-base text-white placeholder:text-zinc-400 text-white placeholder:text-gray-500 p-2.5 w-full max-w-sm transition-all rounded-none border-0 border-b border-white/20 bg-transparent px-0 transition-colors placeholder:text-zinc-500 focus:border-orange-500 focus:outline-none focus:ring-0"
         />
         <button 
-          className="bg-orange-600 hover:bg-orange-700 text-white font-semibold px-6 py-2.5 rounded-lg transition-all shadow-lg shadow-orange-950/40" 
+          className="shrink-0 whitespace-nowrap bg-orange-600 hover:bg-orange-700 text-white font-semibold text-sm sm:text-base px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg transition-all shadow-lg shadow-orange-950/40"
           onClick={handleJoinExam}
           disabled={isJoining}
         >
@@ -131,9 +131,9 @@ export default function StudentDashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <h3 className="text-xl font-semibold text-white">My Exams</h3>
           
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex items-end gap-3 w-full sm:w-auto">
             {/* Search Bar */}
-            <div className="relative w-full sm:w-64">
+            <div className="relative min-w-0 flex-1 sm:flex-none sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-400" />
               <input 
                 type="text" 
@@ -148,7 +148,7 @@ export default function StudentDashboard() {
             <select
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
-              className="text-white py-2 transition-all text-sm cursor-pointer appearance-none rounded-none border-0 border-b border-white/20 bg-transparent px-0 transition-colors placeholder:text-zinc-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+              className="shrink-0 h-11 text-white transition-all text-sm cursor-pointer appearance-none rounded-none border-0 border-b border-white/20 bg-transparent px-0 transition-colors placeholder:text-zinc-500 focus:border-orange-500 focus:outline-none focus:ring-0"
               style={{ backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'white\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem center', backgroundSize: '1em 1em', paddingRight: '2rem' }}
             >
               <option value="1" className="bg-black text-white">Last 1 Day</option>

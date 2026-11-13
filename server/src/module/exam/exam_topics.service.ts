@@ -8,6 +8,7 @@ import { generateSectionSubtopics } from "../generation_agents/agents/subtopics_
 import { generateTopicQuestions, type GenerateTopicQuestionsInput } from "../generation_agents/agents/generation_agent.js";
 import { verifyAndRepairTopicQuestions } from "../generation_agents/topic_question_verification.js";
 import { allocateSectionQuestions } from "../generation_agents/allocation.js";
+import { assertQuota, recordUsage } from "../plans/quota.service.js";
 import type { Difficulty } from "../generation_agents/Types/inputExam.js";
 
 const OPTION_LETTERS = ["A", "B", "C", "D"];
@@ -66,6 +67,9 @@ export const addTopicToExam = async (examId: string, input: AddTopicInput, reque
     const marks = inBlock[0]?.marks ?? (block.questionCount > 0 && block.totalMarks > 0 ? block.totalMarks / block.questionCount : 1);
     const questionType = block.questionType;
 
+    // Refused before the AI plans anything if the plan can't cover the questions asked for.
+    await assertQuota(requester.id, "question_generation", input.count);
+
     const planned = await generateSectionSubtopics(
         { name: section.title, subject: block.subject, question_count: input.count, question_type: questionType, marks, topics: [topic] },
         { globalInstructions: [], topicInstructions: description ? [{ topic, instructions: [description] }] : [], difficulty: input.difficulty }
@@ -106,11 +110,12 @@ export const addTopicToExam = async (examId: string, input: AddTopicInput, reque
                 options: q.type === "mcq"
                     ? q.options.map((opt, i) => ({ value: opt.text, isCode: opt.isCode, isCorrect: OPTION_LETTERS[i] === q.correct_option }))
                     : undefined,
-                rubric: q.type === "descriptive" ? { categories: q.rubric.categories } : undefined,
             } as any,
             requester
         );
     }
+
+    await recordUsage(requester.id, "question_generation", verified.length);
 
     return { topic, added: verified.length, requested: input.count };
 };

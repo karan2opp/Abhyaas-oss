@@ -37,7 +37,7 @@ export const tools = [
     zodFunction({
         name: "update_question",
         parameters: UpdateQuestionArgsZodSchema,
-        description: "Update one existing question: send its complete new version (text, content blocks, and all options + correct answer for an MCQ, or the full rubric for a descriptive question).",
+        description: "Update one existing question: send its complete new version (text, content blocks, and for an MCQ all options + the correct answer).",
     }),
     zodFunction({
         name: "update_question_options",

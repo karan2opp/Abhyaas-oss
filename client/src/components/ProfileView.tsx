@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import { Camera, Mail, User, Shield, KeyRound, Loader2, ArrowLeft } from 'lucide-react';
+import { useClerk } from '@clerk/nextjs';
 
 import { useAuthStore } from '@/store/authStore';
-import { updateProfileService, forgotPasswordService, getMe } from '@/app/auth/auth.service';
+import { updateProfileService, getMe } from '@/app/auth/auth.service';
 
 export default function ProfileView() {
   const router = useRouter();
@@ -16,7 +17,7 @@ export default function ProfileView() {
   const [name, setName] = useState<string>(user?.name || '');
   const [previewUrl, setPreviewUrl] = useState<string | null>(user?.avatarUrl || null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
+  const { openUserProfile } = useClerk();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -61,26 +62,13 @@ export default function ProfileView() {
       if (name !== user?.name) formData.append('name', name);
 
       const response = await updateProfileService(formData);
-      setUser(response.data, useAuthStore.getState().accessToken);
+      setUser(response.data);
       toast.success("Profile updated successfully");
       setFile(null);
     } catch (error: any) {
       toast.error(error.message || "Failed to update profile");
     } finally {
       setIsUpdating(false);
-    }
-  };
-
-  const handlePasswordReset = async () => {
-    setIsResetting(true);
-    try {
-      await forgotPasswordService(user.email);
-      toast.success("OTP sent to your email!");
-      router.push(`/auth/forgot-password?step=2&email=${encodeURIComponent(user.email)}`);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to initiate password reset");
-    } finally {
-      setIsResetting(false);
     }
   };
 
@@ -209,15 +197,13 @@ export default function ProfileView() {
                     <KeyRound className="w-4 h-4 mr-2 text-gray-400" />
                     Password
                   </h4>
-                  <p className="text-sm text-gray-400 mt-1">Change your password by receiving a secure OTP.</p>
+                  <p className="text-sm text-gray-400 mt-1">Change your password or manage how you sign in.</p>
                 </div>
                 <button 
-                  onClick={handlePasswordReset}
-                  disabled={isResetting}
+                  onClick={() => openUserProfile()}
                   className="bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium rounded-xl px-5 py-2.5 transition-all active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 whitespace-nowrap flex items-center gap-2"
                 >
-                  {isResetting && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Reset Password
+                  Manage account
                 </button>
               </div>
             </div>

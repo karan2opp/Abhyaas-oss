@@ -10,7 +10,8 @@
   --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-space-grotesk);
-  
+  --font-display: var(--font-inter);
+
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   
@@ -133,4 +134,91 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.3);
   }
+}
+
+/* ── Landing page theme ───────────────────────────────────────────────────────────────────────────────────────────────
+   The landing page (components/landing and app/page.tsx) takes its colours from these variables. They switch with the app's
+   theme: the "dark" class that next-themes puts on <html>. The ink variables are space-separated channels, used as
+   rgb(var(--l-ink-rgb) / 0.7), so any shade of text, line or shadow follows the theme. */
+.landing {
+  --l-bg: #fefefc;
+  --l-paper: #f7f6f3;
+  --l-surface: #ffffff;
+  --l-ink: #1b1410;
+  --l-ink-rgb: 27 20 16;
+  --l-shadow-rgb: 27 20 16;
+  --l-nav-bg: rgb(254 254 252 / 0.85);
+  --l-glass-a: #ffffff;
+  --l-glass-b: #f1efea;
+  --l-crack-hi: rgb(255 255 255 / 0.95);
+  --l-sheen: rgb(255 255 255 / 0.7);
+  --l-green: #3c7a00;
+  --l-red: #d92d20;
+  --l-cta-a: #fff6ec;
+  --l-cta-b: #fde6d0;
+  --l-cta-border: rgb(242 106 27 / 0.22);
+  --l-hero-panel: #fefefc;
+  color-scheme: light;
+}
+
+/* Headlines: Inter at medium weight with tight letter spacing. Small labels and numbers use the monospace font (font-mono). */
+.landing .font-display {
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.dark .landing {
+  --l-bg: #0d0d0e;
+  --l-paper: #1c1c1f;
+  --l-surface: #151517;
+  --l-ink: #f4f1ec;
+  --l-ink-rgb: 244 241 236;
+  --l-shadow-rgb: 0 0 0;
+  --l-nav-bg: rgb(13 13 14 / 0.8);
+  --l-glass-a: #232326;
+  --l-glass-b: #16161a;
+  --l-crack-hi: rgb(255 255 255 / 0.16);
+  --l-sheen: rgb(255 255 255 / 0.12);
+  --l-green: #86d14a;
+  --l-red: #ff7b6e;
+  --l-cta-a: #2a1a0f;
+  --l-cta-b: #3a2112;
+  --l-cta-border: rgb(242 106 27 / 0.35);
+  --l-hero-panel: #f3efe8;
+  color-scheme: dark;
+}
+
+/* The hero picture has a white background. On the light page it is multiplied into the page and its edges fade out. On the dark
+   page it sits on a light rounded panel, like a screen floating on the page. */
+.landing-hero-frame {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 5%, #000 95%, transparent), linear-gradient(to bottom, transparent, #000 7%, #000 93%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, transparent, #000 5%, #000 95%, transparent), linear-gradient(to bottom, transparent, #000 7%, #000 93%, transparent);
+  mask-composite: intersect;
+}
+.dark .landing .landing-hero-frame {
+  -webkit-mask-image: none;
+  mask-image: none;
+  border-radius: 28px;
+  box-shadow: 0 30px 80px -30px rgb(0 0 0 / 0.8), 0 0 0 1px rgb(255 255 255 / 0.1);
+}
+
+/* ── Theme switch animation (the landing page's sun/moon button) ───────────────────────────────────────────────────────
+   The browser takes a picture of the page before and after the switch. The old picture stays still and the new one grows as a
+   circle out of the button (the circle itself is animated in LandingThemeToggle.tsx). Browsers without this feature get a short
+   colour fade instead, through the "theme-fading" class. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  z-index: 1;
+}
+::view-transition-new(root) {
+  z-index: 2;
+}
+.theme-fading .landing,
+.theme-fading .landing * {
+  transition: background-color 0.5s ease, color 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease, fill 0.5s ease, stroke 0.5s ease !important;
 }

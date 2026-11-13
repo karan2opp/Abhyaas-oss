@@ -20,6 +20,8 @@ services:
 
   redis:
     image: redis:7-alpine
+    # Keeps a log of every write on disk (append-only file), so queued grading jobs survive a crash of Redis.
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6380:6379"
     volumes:

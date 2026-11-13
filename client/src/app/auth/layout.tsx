@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter, usePathname } from 'next/navigation';
+import { useAuth } from '@clerk/nextjs';
+import { Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -10,19 +12,31 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const user = useAuthStore(state => state.user);
   const isInitialized = useAuthStore(state => state.isInitialized);
+  const profileError = useAuthStore(state => state.error);
+  const fetchCurrentUser = useAuthStore(state => state.fetchCurrentUser);
+  const logout = useAuthStore(state => state.logout);
+  const { isLoaded, isSignedIn } = useAuth();
   const [mounted, setMounted] = useState(false);
+
+  // Clerk says the person is signed in, but the app's own record of them (role, profile) comes from the API. Until that
+  // arrives the form must not be shown again, and if it can't be loaded the person needs to be told, not left staring at
+  // a sign-in form that seems to have done nothing.
+  const waitingForProfile = isLoaded && isSignedIn && !user;
+  const profileFailed = waitingForProfile && isInitialized && !!profileError;
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // Someone who is signed in has no business on the sign-in or sign-up page: send them to /onboarding, where they choose
+  // the student side or the teacher side. This is where everyone lands after signing in.
   useEffect(() => {
-    if (isInitialized && user && pathname !== '/auth/forgot-password') {
-      router.replace(`/${user.role}`);
+    if (isInitialized && user) {
+      router.replace('/onboarding');
     }
   }, [isInitialized, user, router, pathname]);
 
-  if (!mounted || (isInitialized && user && pathname !== '/auth/forgot-password')) return null;
+  if (!mounted || (isInitialized && user)) return null;
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#050505] relative overflow-hidden font-sans">
@@ -49,9 +63,36 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             </div>
             <h1 className="text-2xl font-bold text-white tracking-tight">Abhyas</h1>
             <p className="text-sm text-gray-400 mt-1">Institutional Exam Platform</p>
+            <p className="text-base font-semibold text-white mt-5">
+              {pathname.startsWith('/auth/register') ? 'Create your account' : 'Sign in to continue'}
+            </p>
           </div>
 
-          {children}
+          {profileFailed ? (
+            <div className="space-y-4 text-center">
+              <p className="text-sm text-red-300">{profileError}</p>
+              <button
+                type="button"
+                onClick={() => void fetchCurrentUser()}
+                className="w-full rounded-xl bg-orange-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-orange-700"
+              >
+                Try again
+              </button>
+              <button
+                type="button"
+                onClick={() => void logout()}
+                className="text-sm text-gray-400 transition-colors hover:text-white"
+              >
+                Sign out
+              </button>
+            </div>
+          ) : waitingForProfile ? (
+            <div className="flex items-center justify-center gap-2 py-6 text-sm text-gray-400">
+              <Loader2 className="h-4 w-4 animate-spin" /> Signing you in...
+            </div>
+          ) : (
+            children
+          )}
 
         </motion.div>
 

@@ -1,6 +1,7 @@
 import type { Requester } from "../../common/permissions/index.js";
 import { createQuestion, updateQuestion, deleteQuestion, getQuestionById } from "../questions/question.service.js";
 import { generateTopicQuestions } from "./agents/generation_agent.js";
+import { assertQuota, recordUsage } from "../plans/quota.service.js";
 import { findContentBlocksProblem } from "./table_blocks.util.js";
 import { assertMcqAnswersAreCorrect, type McqToVerify } from "./question_review_verification.js";
 import type {
@@ -23,24 +24,12 @@ export interface QuestionReviewResult {
     changeLog: string[];
 }
 
-type RubricCategory = { name: string; weight: number; key_points: string[] };
-
 // PostgreSQL's jsonb reorders object keys, so stored content blocks have to be
 // compared with keys sorted, or every code block would look "changed".
 const canonicalJson = (value: unknown): string =>
     JSON.stringify(value, (_key, v) =>
         v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v
     );
-
-// Grading multiplies each category's score by its weight, so weights that
-// don't sum to 1 would silently scale every student's mark up or down.
-function normalizeRubric(categories: RubricCategory[]): RubricCategory[] {
-    const sum = categories.reduce((s, c) => s + Math.max(0, c.weight), 0);
-    return categories.map((c) => ({
-        ...c,
-        weight: Math.round((sum > 0 ? Math.max(0, c.weight) / sum : 1 / categories.length) * 1000) / 1000,
-    }));
-}
 
 // Where a new question goes. A replacement takes the old question's exact
 // section, block, and position, so it stays at the same number on screen.
@@ -82,8 +71,6 @@ export async function applyAddQuestion(args: AddQuestionArgs, requester: Request
                 claimedCorrectOption: args.correct_option,
             },
         ]);
-    } else if (!args.rubric_categories || args.rubric_categories.length === 0) {
-        throw new Error("A descriptive question needs rubric_categories.");
     }
 
     await createQuestion(
@@ -97,7 +84,6 @@ export async function applyAddQuestion(args: AddQuestionArgs, requester: Request
                 args.type === "mcq"
                     ? args.options!.map((opt, i) => ({ value: opt.text, isCode: opt.isCode, isCorrect: OPTION_LETTERS[i] === args.correct_option }))
                     : undefined,
-            rubric: args.type === "descriptive" ? { categories: normalizeRubric(args.rubric_categories!) } : undefined,
         } as any,
         requester
     );
@@ -120,6 +106,9 @@ export async function applyGenerateQuestions(args: GenerateQuestionsArgs, reques
     if (args.replaces_question_id && args.count !== 1) {
         throw new Error("replaces_question_id only makes sense with count 1 — replacing one question with several has no single target. Generate the replacement alone first, then handle any extra questions as a separate addition.");
     }
+
+    // The agent sees this as an ordinary tool error, so it can tell the teacher their plan has run out.
+    await assertQuota(requester.id, "question_generation", args.count);
 
     const placement = await placementFor(args, requester);
     const output = await generateTopicQuestions({
@@ -157,11 +146,12 @@ export async function applyGenerateQuestions(args: GenerateQuestionsArgs, reques
                 options: q.type === "mcq"
                     ? q.options.map((opt, i) => ({ value: opt.text, isCode: opt.isCode, isCorrect: OPTION_LETTERS[i] === q.correct_option }))
                     : undefined,
-                rubric: q.type === "descriptive" ? { categories: normalizeRubric(q.rubric.categories) } : undefined,
             } as any,
             requester
         );
     }
+
+    await recordUsage(requester.id, "question_generation", output.questions.length);
 
     // Same atomicity guarantee as applyAddQuestion: the old question is only
     // removed after every new one is confirmed created and verified.
@@ -179,7 +169,7 @@ export async function applyRemoveQuestion(args: RemoveQuestionArgs, requester: R
 }
 
 // Saves the complete edited question in one go: text, content blocks, and
-// options (MCQ, fact-checked) or rubric (descriptive) always together.
+// options (MCQ, fact-checked) always together.
 export async function applyUpdateQuestion(args: UpdateQuestionArgs, requester: Requester): Promise<QuestionReviewResult> {
     assertTablesAddUp(args.content_blocks);
     const existing = await getQuestionById(args.question_id, requester);
@@ -196,10 +186,9 @@ export async function applyUpdateQuestion(args: UpdateQuestionArgs, requester: R
                 claimedCorrectOption: args.correct_option,
             },
         ]);
-    } else if (!args.rubric_categories || args.rubric_categories.length === 0) {
-        throw new Error("Updating a descriptive question needs its full rubric_categories, matching the new text and content.");
     }
 
+    // A descriptive question's grading guide is written for the new wording later, so nothing about it is saved here.
     await updateQuestion(
         args.question_id,
         {
@@ -207,7 +196,7 @@ export async function applyUpdateQuestion(args: UpdateQuestionArgs, requester: R
             contentBlocks: args.content_blocks,
             ...(existing.type === "mcq"
                 ? { options: args.options!.map((opt, i) => ({ value: opt.text, isCode: opt.isCode, isCorrect: OPTION_LETTERS[i] === args.correct_option })) }
-                : { rubric: { categories: normalizeRubric(args.rubric_categories!) } }),
+                : {}),
         } as any,
         requester
     );
@@ -215,7 +204,7 @@ export async function applyUpdateQuestion(args: UpdateQuestionArgs, requester: R
     // Every update re-sends the content blocks, so say plainly whether they
     // actually changed — an unintended change to a code snippet then shows up.
     const contentChanged = canonicalJson(existing.contentBlocks ?? []) !== canonicalJson(args.content_blocks);
-    const parts = existing.type === "mcq" ? "wording and options" : "wording and rubric";
+    const parts = existing.type === "mcq" ? "wording and options" : "wording";
     return {
         changeLog: [`Updated the ${parts} of a question; its code/table/list content ${contentChanged ? "CHANGED" : "is unchanged"}.`],
     };

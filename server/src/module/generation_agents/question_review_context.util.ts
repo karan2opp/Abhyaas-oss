@@ -71,8 +71,6 @@ function trimQuestion(q: RawQuestion, number: number) {
             isCorrect: o.isCorrect,
             ...(o.isCode && { isCode: true }),
         }));
-    } else if (q.rubric) {
-        trimmed.rubric = q.rubric;
     }
 
     return trimmed;

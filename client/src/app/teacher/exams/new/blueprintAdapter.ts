@@ -247,7 +247,7 @@ export function generatedExamToSaveShape(generatedExam: GeneratedExam, mapping: 
       t.questions.map((q) =>
         q.type === "mcq"
           ? { type: "mcq", topic: q.topic, subtopic: q.subtopic, description: q.question_text, marks: q.marks, options: mapMcqOptionsForSave(q.options, q.correct_option), contentBlocks: q.content_blocks }
-          : { type: "descriptive", topic: q.topic, subtopic: q.subtopic, description: q.question_text, marks: q.marks, rubric: q.rubric, contentBlocks: q.content_blocks }
+          : { type: "descriptive", topic: q.topic, subtopic: q.subtopic, description: q.question_text, marks: q.marks, contentBlocks: q.content_blocks }
       )
     );
 

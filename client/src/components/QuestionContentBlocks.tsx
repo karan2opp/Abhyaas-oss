@@ -36,14 +36,14 @@ type Size = "large" | "compact";
 
 const SIZES = {
   large: {
-    wrap: "my-6 rounded-2xl overflow-hidden border border-white/10 bg-[#09090b] shadow-2xl font-normal",
-    body: "p-6 overflow-x-auto custom-scrollbar",
-    code: "block font-mono text-[16px] md:text-lg leading-relaxed text-gray-300 whitespace-pre-wrap",
-    inlineCode: "bg-white/[0.06] px-1.5 py-0.5 rounded text-lg text-gray-300 font-mono font-normal",
-    codeOption: "block whitespace-pre font-mono text-base leading-relaxed text-gray-300 font-normal",
-    table: "text-[15px]",
-    cell: "px-4 py-2.5",
-    list: "text-[15px] leading-relaxed",
+    wrap: "my-4 sm:my-6 rounded-xl sm:rounded-2xl overflow-hidden border border-white/10 bg-[#09090b] shadow-2xl font-normal",
+    body: "p-3 sm:p-6 overflow-x-auto custom-scrollbar",
+    code: "block font-mono text-[13px] sm:text-[16px] md:text-lg leading-relaxed text-gray-300 whitespace-pre-wrap",
+    inlineCode: "bg-white/[0.06] px-1.5 py-0.5 rounded text-sm sm:text-lg text-gray-300 font-mono font-normal",
+    codeOption: "block whitespace-pre font-mono text-sm sm:text-base leading-relaxed text-gray-300 font-normal",
+    table: "text-[12px] sm:text-[15px]",
+    cell: "px-2 py-1.5 sm:px-4 sm:py-2.5",
+    list: "text-sm sm:text-[15px] leading-relaxed",
   },
   compact: {
     wrap: "my-3 rounded-xl overflow-hidden border border-white/10 bg-[#09090b]",
@@ -51,8 +51,8 @@ const SIZES = {
     code: "block font-mono text-sm leading-relaxed text-gray-300 whitespace-pre-wrap",
     inlineCode: "bg-white/[0.06] px-1 py-0.5 rounded text-xs text-gray-300 font-mono",
     codeOption: "block whitespace-pre font-mono text-sm leading-relaxed text-gray-300 font-normal",
-    table: "text-xs",
-    cell: "px-3 py-2",
+    table: "text-[11px] sm:text-xs",
+    cell: "px-2 py-1.5 sm:px-3 sm:py-2",
     list: "text-sm leading-relaxed",
   },
 } as const;
@@ -112,7 +112,7 @@ function TableBlock({ headers, rows, s }: { headers?: TableCellValue[]; rows?: T
         )}
         <tbody>
           {(rows || []).map((row, ri) => (
-            <tr key={ri} className={ri % 2 === 1 ? "bg-white/[0.02]" : undefined}>
+            <tr key={ri}>
               {row.map((cell, ci) => {
                 const { text, colSpan, rowSpan } = cellParts(cell);
                 return (

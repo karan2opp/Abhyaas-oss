@@ -22,6 +22,69 @@
       "when": 1793451414828,
       "tag": "0002_exam_registrations",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793643582003,
+      "tag": "0003_clerk_link_and_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793643593983,
+      "tag": "0004_drop_old_auth_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793659341015,
+      "tag": "0005_remove_onboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793659496109,
+      "tag": "0006_restore_onboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793659996896,
+      "tag": "0007_user_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793660495063,
+      "tag": "0008_usage_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793891803341,
+      "tag": "0009_old_gressill",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793901796743,
+      "tag": "0010_noisy_lucky_pierre",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794237399670,
+      "tag": "0011_exam_evaluation_scheme",
+      "breakpoints": true
     }
   ]
 }

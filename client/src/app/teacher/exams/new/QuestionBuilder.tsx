@@ -263,7 +263,7 @@ export function QuestionBuilder({
           {/* Resizable Splitter */}
           {editorConfig.isOpen && editorConfig.sectionId && (
             <div
-              className="w-4 bg-transparent hover:bg-orange-500/20 active:bg-orange-500/40 cursor-col-resize shrink-0 transition-colors flex items-center justify-center group"
+              className="hidden md:flex w-4 bg-transparent hover:bg-orange-500/20 active:bg-orange-500/40 cursor-col-resize shrink-0 transition-colors items-center justify-center group"
               onMouseDown={() => setIsDraggingSidebar(true)}
             >
               <div className="w-0.5 h-full min-h-[500px] bg-white/10 group-hover:bg-blue-400 rounded-full transition-colors" />
@@ -272,9 +272,10 @@ export function QuestionBuilder({
 
           {/* Right Sidebar Editor */}
           {editorConfig.isOpen && editorConfig.sectionId && (
+            // Phones: a full-screen panel over the list (there is no room beside it). From md up: the resizable side panel.
             <div
-              className="shrink-0 sticky top-0 bg-[#151a28] border border-orange-500/30 rounded-xl shadow-[0_0_40px_rgba(147,51,234,0.15)] flex flex-col animate-in slide-in-from-right-8 h-[calc(100vh-250px)] overflow-hidden"
-              style={{ width: `${sidebarWidth}px` }}
+              className="fixed inset-0 z-50 h-dvh w-full md:static md:z-auto md:h-[calc(100vh-250px)] md:w-[var(--editor-w)] md:shrink-0 md:sticky md:top-0 bg-[#151a28] md:border border-orange-500/30 md:rounded-xl shadow-[0_0_40px_rgba(147,51,234,0.15)] flex flex-col animate-in slide-in-from-right-8 overflow-hidden"
+              style={{ "--editor-w": `${sidebarWidth}px` } as React.CSSProperties}
             >
               <SidebarQuestionEditor
                 config={editorConfig}
@@ -356,22 +357,40 @@ function SectionItem({ examId, canEditTopics, section, index, refresh, onOpenEdi
     }
   };
 
+  // A section holds one kind of question. Quick Add follows it: the type of the questions already in the section, or,
+  // while it is empty, the type its block was planned with. MCQ is only the last fallback.
+  const sectionQuestionType: "mcq" | "descriptive" = (() => {
+    const existing = (section.questions || [])[0]?.type;
+    if (existing === "mcq" || existing === "descriptive") return existing;
+    const planned = (section.blocks || [])[0]?.questionType;
+    return planned === "descriptive" ? "descriptive" : "mcq";
+  })();
+
   const handleQuickAdd = async (count: number) => {
     try {
       const promises = [];
       for (let i = 0; i < count; i++) {
-        promises.push(createQuestionService({
-          sectionId,
-          type: "mcq",
-          description: "New Multiple Choice Question - Click edit to modify",
-          marks: 1,
-          options: [
-            { value: "Option A", isCorrect: true },
-            { value: "Option B", isCorrect: false },
-            { value: "Option C", isCorrect: false },
-            { value: "Option D", isCorrect: false }
-          ]
-        }));
+        promises.push(createQuestionService(
+          sectionQuestionType === "descriptive"
+            ? {
+                sectionId,
+                type: "descriptive",
+                description: "New Question - Click edit to modify",
+                marks: 1,
+              }
+            : {
+                sectionId,
+                type: "mcq",
+                description: "New Question - Click edit to modify",
+                marks: 1,
+                options: [
+                  { value: "Option A", isCorrect: true },
+                  { value: "Option B", isCorrect: false },
+                  { value: "Option C", isCorrect: false },
+                  { value: "Option D", isCorrect: false }
+                ]
+              }
+        ));
       }
       await Promise.all(promises);
       refresh();
@@ -383,7 +402,7 @@ function SectionItem({ examId, canEditTopics, section, index, refresh, onOpenEdi
 
   return (
     <Card className="bg-[#0f0f11]/80 border-white/10 shadow-xl overflow-hidden transition-all duration-300">
-      <div className="bg-[#18181b] px-6 py-4 flex items-center justify-between border-b border-white/5">
+      <div className="bg-[#18181b] px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2 border-b border-white/5">
         <div className="flex-1 flex items-center gap-4">
           <Button 
             variant="ghost" 
@@ -417,7 +436,7 @@ function SectionItem({ examId, canEditTopics, section, index, refresh, onOpenEdi
       </div>
 
       {isExpanded && (
-        <CardContent className="p-6 space-y-4 animate-in slide-in-from-top-2 fade-in duration-200">
+        <CardContent className="p-2 sm:p-6 space-y-3 sm:space-y-4 animate-in slide-in-from-top-2 fade-in duration-200">
           <TopicsPanel examId={examId} section={section} canEdit={canEditTopics} refresh={refresh} />
           {(section.questions || []).map((q: any, qIdx: number) => (
             <QuestionItem key={q._id || q.id} question={q} index={qIdx} refresh={refresh} onEdit={() => onOpenEditor(q)} />
@@ -469,12 +488,14 @@ function QuestionItem({ question, index, refresh, onEdit }: { question: any, ind
   };
 
   return (
-    <div className="bg-[#18181b]/60 border border-white/5 rounded-2xl p-6 relative overflow-hidden shadow-sm hover:shadow-md hover:border-white/10 transition-all group">
+    <div className="bg-[#18181b]/60 border border-white/5 rounded-xl sm:rounded-2xl p-3 sm:p-6 relative overflow-hidden shadow-sm hover:shadow-md hover:border-white/10 transition-all group">
       <div className="absolute top-0 left-0 bg-orange-500/10 text-orange-400 font-mono text-xs font-bold px-3 py-1.5 rounded-br-xl border-b border-r border-orange-500/30">
         Q{index + 1}
       </div>
 
-      <div className="absolute top-4 right-4 flex items-center gap-2">
+      {/* Marks sits on the same row as Edit / Delete. */}
+      <div className="absolute top-2.5 right-2.5 sm:top-4 sm:right-4 flex items-center gap-2">
+        <span className="flex h-8 items-center whitespace-nowrap border border-white/10 bg-white/5 px-2.5 rounded-md text-gray-300 text-[10px] font-bold">Marks: {question.marks || 1}</span>
         <Button size="sm" variant="outline" className="bg-[#14151f] border-white/15 text-white hover:bg-white/10 h-8 px-3 text-xs font-semibold" onClick={onEdit}>
           Edit
         </Button>
@@ -482,25 +503,10 @@ function QuestionItem({ question, index, refresh, onEdit }: { question: any, ind
           Delete
         </Button>
       </div>
-      
-      <div className="pt-4">
-        <div className="flex items-center gap-2 mb-4">
-          <span className={cn(
-            "px-2.5 py-1 rounded-md text-[10px] uppercase font-bold tracking-wider",
-            question.type === 'mcq' ? "bg-orange-500/10 text-orange-400 border border-orange-500/30" : "bg-[#18181b]mber-500/10 text-amber-400 border border-amber-500/20"
-          )}>
-            {question.type === 'mcq' ? 'Multiple Choice' : 'Descriptive'}
-          </span>
-          <span className="border border-white/10 bg-white/5 px-2.5 py-1 rounded-md text-gray-300 text-[10px] font-bold">Marks: {question.marks || 1}</span>
-          {question.topic && (
-            <span className="min-w-0 truncate text-[11px] text-gray-500">
-              {question.topic}
-              {question.subtopic ? ` › ${question.subtopic}` : ""}
-            </span>
-          )}
-        </div>
 
-        <div className="text-white text-[15px] leading-relaxed mb-6 font-medium prose prose-invert max-w-none pr-16">
+      <div className="pt-9">
+        {/* No type badge: the type is obvious from whether the question has options. */}
+        <div className="text-white text-[15px] leading-relaxed mb-4 sm:mb-6 font-medium prose prose-invert max-w-none">
           <ReactMarkdown 
             remarkPlugins={MATH_REMARK_PLUGINS}
             rehypePlugins={MATH_REHYPE_PLUGINS}
@@ -522,7 +528,7 @@ function QuestionItem({ question, index, refresh, onEdit }: { question: any, ind
           </ReactMarkdown>
         </div>
 
-        <div className="max-w-3xl -mt-3 mb-5">
+        <div className="max-w-3xl -mt-3 mb-1 sm:mb-5">
           <ContentBlocksView blocks={question.contentBlocks} size="compact" />
         </div>
 
@@ -691,14 +697,14 @@ function SidebarQuestionEditor({ config, onClose, onSaveAndAnother, refresh, exa
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-6 py-5 border-b border-white/5 flex items-center justify-between bg-[#18181b]">
+      <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-white/5 flex items-center justify-between bg-[#18181b]">
         <h3 className="font-bold text-white text-lg">{isEditMode ? "Edit Question" : "New Question"}</h3>
         <Button size="icon" variant="ghost" onClick={onClose} className="text-gray-400 hover:text-white h-8 w-8">
           <X className="h-5 w-5" />
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 sm:space-y-6 custom-scrollbar">
         {!isEditMode && (
           <div className="space-y-2">
             <label className="text-sm font-semibold text-gray-300">Question Type</label>
@@ -843,7 +849,7 @@ function SidebarQuestionEditor({ config, onClose, onSaveAndAnother, refresh, exa
 // -------------------------------------------------------------
 export type AiGeneratorStage = "config" | "intent" | "blueprint" | "generating";
 
-export type WorkspaceParts = { left: React.ReactNode; right: React.ReactNode; footer: React.ReactNode; fill?: boolean };
+export type WorkspaceParts = { left: React.ReactNode; right: React.ReactNode; footer: React.ReactNode; fill?: boolean; bare?: boolean };
 
 // The Exam Intent conversation lives on the server, but this page only knows its id in memory. Keeping the id (and the
 // topics form it belongs to) in this tab's session storage lets a refresh pick the same conversation up again.
@@ -1469,16 +1475,16 @@ export function AiExamGeneratorForm({
       <Button
         variant="ghost"
         onClick={() => setAiStage("config")}
-        className="text-gray-400 hover:text-white h-10 px-5 text-sm font-semibold flex items-center gap-1.5"
+        className="text-gray-400 hover:text-white h-10 px-2 sm:px-5 text-sm font-semibold flex items-center gap-1.5"
       >
         <ArrowLeft className="h-4 w-4" /> {renderShell ? "Back to Topics" : "Edit Exam Settings"}
       </Button>
 
       <Button
         onClick={handleVerifyAndProceed}
-        className="bg-purple-600 hover:bg-purple-700 text-white h-11 px-7 font-bold text-sm shadow-xl shadow-purple-950/40 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+        className="bg-purple-600 hover:bg-purple-700 text-white h-10 sm:h-11 px-4 sm:px-7 font-bold text-sm shadow-xl shadow-purple-950/40 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
       >
-        <Sparkles className="h-4 w-4 mr-2 text-purple-200" /> Generate Questions
+        <Sparkles className="h-4 w-4 mr-1.5 sm:mr-2 text-purple-200" /> Generate Questions
       </Button>
 
       <Dialog open={countMismatches !== null} onOpenChange={(open) => !open && !isRebalancing && setCountMismatches(null)}>
@@ -1561,12 +1567,6 @@ export function AiExamGeneratorForm({
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-400">
-            {entitlements.voiceAgent ? "Talk through" : "Tell the agent"} the goal of this exam and what you expect from
-            each topic. It asks three short questions, then shows what it understood for you to confirm before
-            building the plan.
-          </p>
-
           {!entitlements.voiceAgent ? (
             <>
               <div className="min-h-[8rem] flex-1 space-y-6">
@@ -1679,16 +1679,13 @@ export function AiExamGeneratorForm({
 
   const configFormNode = (
           <div className="space-y-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h5 className="font-bold text-white text-base tracking-wider uppercase">EXAM SETTINGS & SECTIONS</h5>
-                <p className="text-xs text-gray-400">Organize section topics for blueprint planning</p>
-              </div>
+            <div className="flex items-center justify-between gap-3">
+              <h5 className="font-bold text-white text-sm sm:text-base tracking-wider uppercase leading-tight">EXAM SETTINGS & SECTIONS</h5>
               <Button
                 type="button"
                 onClick={addSection}
                 size="sm"
-                className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-orange-950/40 h-9 px-4"
+                className="shrink-0 bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-orange-950/40 h-9 px-3 sm:px-4"
               >
                 <Plus className="h-4 w-4 mr-1.5" /> Add Section
               </Button>
@@ -1783,12 +1780,12 @@ export function AiExamGeneratorForm({
 
                     {/* TOPICS */}
                     <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wider">TOPICS</label>
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="text-[11px] font-bold leading-none text-gray-300 uppercase tracking-wider">TOPICS</label>
                         <Button
                           type="button"
                           onClick={() => addTopicToSection(section.id)}
-                          className="h-8 px-4 bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold rounded-lg"
+                          className="h-7 px-3 bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold rounded-lg"
                         >
                           <Plus className="h-3 w-3 mr-1" /> Add Topic
                         </Button>
@@ -1897,13 +1894,13 @@ export function AiExamGeneratorForm({
   ) : null;
 
   if (renderShell) {
-    if (isGenerating) return renderShell({ left: loaderNode, right: bookGuideNode, footer: null });
+    if (isGenerating) return renderShell({ left: loaderNode, right: bookGuideNode, footer: null, bare: true });
     if (aiStage === "blueprint" && blueprint) {
       if (showRefine) return renderShell({ left: refinementChatNode, right: null, footer: refineActions, fill: true });
       return renderShell({ left: blueprintTreeNode, right: null, footer: blueprintActions });
     }
-    if (aiStage === "intent") return renderShell({ left: intentChatNode, right: null, footer: intentActions, fill: true });
-    return renderShell({ left: configFormNode, right: bookGuideNode, footer: configActions });
+    if (aiStage === "intent") return renderShell({ left: intentChatNode, right: null, footer: intentActions, fill: true, bare: true });
+    return renderShell({ left: configFormNode, right: bookGuideNode, footer: configActions, bare: true });
   }
 
   if (isGenerating) return loaderNode;

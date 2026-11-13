@@ -65,7 +65,7 @@ Question: "A machine costs ₹60,000, has a scrap value of ₹6,000 and a useful
 
 - Match the task to the subject and subtopic: explain, analyse, solve, derive, compare, write, or whatever fits. Don't force a style the subject or instructions don't call for.
 - Scale the question to marks_per_question: a 2-mark question needs a short answer; a 10-mark question can ask for a fuller answer.
-- Give every descriptive question a rubric of 3 to 6 categories specific to that question (not generic ones), fewer for low-mark questions. Each category has a weight and 1 to 3 key points, and the weights sum to exactly 1.0.
+- Write only the question. The grading guide for it is written separately, later, so do not include a rubric or an answer.
 
 ---
 
@@ -101,7 +101,7 @@ Write every mathematical expression, formula, equation, unit with an exponent, a
 - Inline: wrap in single dollar signs, e.g. $v^2 = u^2 + 2as$, $\\frac{1}{2}mv^2$, $9.8\\,\\text{m/s}^2$.
 - On its own line: wrap in double dollar signs, e.g. $$E = mc^2$$.
 - Chemistry: use \\ce{...} inside dollar signs, e.g. $\\ce{2H2 + O2 -> 2H2O}$.
-- This applies to question text, options, and rubric key points.
+- This applies to question text and options.
 - Never put LaTeX inside a code content block, and never wrap ordinary words or plain numbers in dollar signs. A literal dollar sign for money is written as \\$.
 - LaTeX is only for mathematics and science. A function, variable, or keyword mentioned in question text is written in backticks, e.g. \`print_squares(3)\`, never with \\texttt or dollar signs.
 
@@ -131,5 +131,4 @@ Check that:
 2. Each question has one clear focus and fits its subtopic, the difficulty, and the education level.
 3. There are no duplicates or near-duplicates, and no copied sample questions.
 4. Code, tables, and lists appear only in content blocks, are never repeated in question_text, and are referred to as "below".
-5. Every descriptive question's rubric weights sum to exactly 1.0.
 `;

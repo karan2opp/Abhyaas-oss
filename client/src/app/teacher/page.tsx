@@ -48,65 +48,65 @@ export default function TeacherDashboard() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
         <Card className="bg-[#0f0f11] border-white/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Total Exams</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 px-3 sm:px-6 pb-1 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium leading-tight text-gray-400">Total Exams</CardTitle>
             <FileText className="h-4 w-4 text-orange-400" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 sm:px-6">
             <div className="text-2xl font-bold text-white">{totalExams}</div>
-            <p className="text-xs text-gray-500 mt-1">Exams created by you</p>
+            <p className="hidden sm:block text-xs text-gray-500 mt-1">Exams created by you</p>
           </CardContent>
         </Card>
         <Card className="bg-[#0f0f11] border-white/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Total Students</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 px-3 sm:px-6 pb-1 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium leading-tight text-gray-400">Total Students</CardTitle>
             <Users className="h-4 w-4 text-orange-400" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 sm:px-6">
             <div className="text-2xl font-bold text-white">{totalStudents}</div>
-            <p className="text-xs text-gray-500 mt-1">Students who attempted your exams</p>
+            <p className="hidden sm:block text-xs text-gray-500 mt-1">Students who attempted your exams</p>
           </CardContent>
         </Card>
         <Card className="bg-[#0f0f11] border-white/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Total Submissions</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 px-3 sm:px-6 pb-1 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium leading-tight text-gray-400">Total Submissions</CardTitle>
             <ClipboardCheck className="h-4 w-4 text-orange-400" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 sm:px-6">
             <div className="text-2xl font-bold text-white">{totalSubmissions}</div>
-            <p className="text-xs text-gray-500 mt-1">Across all your exams</p>
+            <p className="hidden sm:block text-xs text-gray-500 mt-1">Across all your exams</p>
           </CardContent>
         </Card>
         <Card className="bg-[#0f0f11] border-white/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Students Online</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 px-3 sm:px-6 pb-1 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium leading-tight text-gray-400">Students Online</CardTitle>
             <Activity className="h-4 w-4 text-emerald-400" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 sm:px-6">
             <div className="text-2xl font-bold text-emerald-400">{studentsOnline}</div>
-            <p className="text-xs text-gray-500 mt-1">Currently attempting an exam</p>
+            <p className="hidden sm:block text-xs text-gray-500 mt-1">Currently attempting an exam</p>
           </CardContent>
         </Card>
         <Card className="bg-[#0f0f11] border-white/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Pending Evaluations</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 px-3 sm:px-6 pb-1 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium leading-tight text-gray-400">Pending Evaluations</CardTitle>
             <Loader className="h-4 w-4 text-amber-400" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 sm:px-6">
             <div className="text-2xl font-bold text-amber-400">{pendingEvaluations}</div>
-            <p className="text-xs text-gray-500 mt-1">Descriptive answers being graded</p>
+            <p className="hidden sm:block text-xs text-gray-500 mt-1">Descriptive answers being graded</p>
           </CardContent>
         </Card>
         <Card className="bg-[#0f0f11] border-white/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Average Score</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 px-3 sm:px-6 pb-1 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium leading-tight text-gray-400">Average Score</CardTitle>
             <BarChart className="h-4 w-4 text-orange-400" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 sm:px-6">
             <div className="text-2xl font-bold text-white">{averageScore}%</div>
-            <p className="text-xs text-gray-500 mt-1">Across submitted exams</p>
+            <p className="hidden sm:block text-xs text-gray-500 mt-1">Across submitted exams</p>
           </CardContent>
         </Card>
       </div>

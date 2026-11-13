@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { env } from "../../env.js";
 import { ApiError } from "../../common/utils/ApiError.js";
+import { getUserOpenAiKey } from "../ai_keys/ai_key.service.js";
 import { IInputExamZodSchema } from "./Types/inputExam.js";
 import { ConversationSummaryZodSchema } from "./Types/outputConversation.js";
 import { persistIntentMemories } from "./agents/exam_intent_agent.js";
@@ -95,7 +96,8 @@ export const createRealtimeSessionHandler = async (req: Request, res: Response, 
             tools = getReviewAgentRealtimeTools();
         }
 
-        const apiKey = process.env.OPENAI_API_KEY;
+        // With people's own OpenAI keys the voice session is billed to the signed-in person's key, never the server's.
+        const apiKey = env.AI_KEY_MODE === "byok" ? await getUserOpenAiKey(userId) : process.env.OPENAI_API_KEY;
         if (!apiKey) throw ApiError.internal("OPENAI_API_KEY is not set on the server");
 
         const openaiRes = await fetch("https://api.openai.com/v1/realtime/client_secrets", {

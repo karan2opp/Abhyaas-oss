@@ -481,164 +481,83 @@ export default function ExamAttemptPage() {
 
   if (!hasAcceptedInstructions) {
     const totalMarks = flattenedQuestions.reduce((acc, q) => acc + (q.marks || 0), 0);
+    const stats = [
+      { label: "Duration", value: `${examData.duration || 60} mins`, accent: false },
+      { label: "Questions", value: String(flattenedQuestions.length), accent: false },
+      { label: "Marks", value: String(totalMarks), accent: true },
+      { label: "Sections", value: String(examData.sections?.length || 1), accent: false },
+    ];
+
     return (
-      <div className="min-h-screen bg-[#050505] text-white flex flex-col justify-between p-4 sm:p-6 md:p-10 custom-scrollbar overflow-y-auto">
-        <div className="max-w-4xl mx-auto w-full space-y-6 md:space-y-8">
-          
-          {/* Header Banner */}
-          <div className="bg-[#12131a] border border-white/10 rounded-2xl p-6 md:p-8 relative overflow-hidden shadow-2xl">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-6 mb-6">
-              <div>
-                <span className="text-[11px] font-bold text-orange-400 uppercase tracking-widest bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/30">
-                  Exam Instructions
-                </span>
-                <h1 className="text-2xl md:text-3xl font-extrabold text-white mt-3 tracking-tight">
-                  {examData.title}
-                </h1>
-                <p className="text-zinc-400 text-sm mt-1">
-                  Please read all instructions and navigation guidelines carefully before starting your test.
-                </p>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <span className="bg-[#14151f] border border-white/15 px-4 py-2 rounded-xl text-xs font-semibold text-zinc-300">
-                  {examData.type === "SCHEDULED" ? "Scheduled (Fixed)" : "On-Demand (Flexible)"}
-                </span>
-              </div>
-            </div>
+      <div className="min-h-screen bg-[#050505] text-white custom-scrollbar overflow-y-auto">
+        <div className="max-w-2xl mx-auto w-full px-4 py-8 sm:px-6 sm:py-12 space-y-8 sm:space-y-10">
 
-            {/* Key Metrics Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="bg-[#14151f] border border-white/10 p-4 rounded-xl">
-                <p className="text-xs font-medium text-zinc-400">Total Duration</p>
-                <p className="text-xl font-bold text-white mt-1">{examData.duration || 60} mins</p>
-              </div>
-              <div className="bg-[#14151f] border border-white/10 p-4 rounded-xl">
-                <p className="text-xs font-medium text-zinc-400">Total Questions</p>
-                <p className="text-xl font-bold text-white mt-1">{flattenedQuestions.length} Questions</p>
-              </div>
-              <div className="bg-[#14151f] border border-white/10 p-4 rounded-xl">
-                <p className="text-xs font-medium text-zinc-400">Total Marks</p>
-                <p className="text-xl font-bold text-orange-400 mt-1">{totalMarks} Marks</p>
-              </div>
-              <div className="bg-[#14151f] border border-white/10 p-4 rounded-xl">
-                <p className="text-xs font-medium text-zinc-400">Sections</p>
-                <p className="text-xl font-bold text-white mt-1">{examData.sections?.length || 1} Sections</p>
-              </div>
-            </div>
+          {/* Title */}
+          <div>
+            <p className="text-[11px] font-semibold text-orange-400 uppercase tracking-widest">Title</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mt-1.5 tracking-tight break-words">{examData.title}</h1>
           </div>
 
-          {/* Teacher's Instructions Section */}
-          <div className="bg-[#12131a] border border-orange-500/30 rounded-2xl p-6 space-y-3 shadow-xl">
-            <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wider flex items-center gap-2">
-              Teacher's Instructions
-            </h3>
-            {examData.specialInstructions && examData.specialInstructions.trim() ? (
-              <p className="text-zinc-200 text-sm leading-relaxed whitespace-pre-wrap">
-                {examData.specialInstructions}
-              </p>
-            ) : (
-              <p className="text-zinc-400 text-sm leading-relaxed">
-                No special instructions provided by the teacher. Follow standard online exam rules: maintain an active internet connection, do not switch browser tabs, and ensure all questions are answered before submitting.
-              </p>
-            )}
-          </div>
-
-          {/* How to Give the Exam (Platform Controls Guide) */}
-          <div className="bg-[#12131a] border border-white/10 rounded-2xl p-6 md:p-8 space-y-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-white border-b border-white/10 pb-3">
-              How to Give the Exam & Navigation Guide
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-[#14151f] border border-white/10 p-4.5 rounded-xl space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="bg-emerald-600 text-white text-xs font-bold px-2.5 py-1 rounded-md">
-                    Save
-                  </span>
-                  <span className="text-sm font-semibold text-white">Save Current Answer</span>
-                </div>
-                <p className="text-xs text-zinc-400 leading-relaxed">
-                  Saves your selected option or typed answer to the database without changing your current question.
-                </p>
+          {/* Key numbers */}
+          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-5 border-y border-white/10 py-5">
+            {stats.map((s) => (
+              <div key={s.label}>
+                <dt className="text-xs text-zinc-500">{s.label}</dt>
+                <dd className={`text-xl font-semibold mt-0.5 ${s.accent ? "text-orange-400" : "text-white"}`}>{s.value}</dd>
               </div>
+            ))}
+          </dl>
 
-              <div className="bg-[#14151f] border border-white/10 p-4.5 rounded-xl space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="bg-orange-600 text-white text-xs font-bold px-2.5 py-1 rounded-md">
-                    Save & Next
-                  </span>
-                  <span className="text-sm font-semibold text-white">Save & Advance</span>
-                </div>
-                <p className="text-xs text-zinc-400 leading-relaxed">
-                  Saves your current answer and automatically advances to the next question in the exam.
-                </p>
+          {/* Instructions */}
+          <section>
+            <h2 className="text-sm font-semibold text-white uppercase tracking-wider">Instructions</h2>
+            <ul className="mt-4 space-y-3 pl-5 list-disc marker:text-orange-500 text-sm text-zinc-300 leading-relaxed">
+              <li>Stay connected to the internet and do not switch browser tabs.</li>
+              <li>Answer all questions before submitting. You cannot change your answers after you submit.</li>
+              <li><span className="font-semibold text-white">Save</span> stores your current answer and keeps you on the same question.</li>
+              <li><span className="font-semibold text-white">Save &amp; Next</span> stores your answer and moves to the next question.</li>
+              <li><span className="font-semibold text-white">Next / Previous</span> moves between questions without saving any changes.</li>
+              <li><span className="font-semibold text-white">Submit Exam</span> is at the top right of the screen. Use it once you have finished.</li>
+            </ul>
+          </section>
+
+          {/* Question navigator colours */}
+          <section>
+            <h2 className="text-sm font-semibold text-white uppercase tracking-wider">Question colours</h2>
+            <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap gap-x-8 gap-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 bg-emerald-600 rounded-md flex items-center justify-center text-xs font-bold text-white shrink-0">1</div>
+                <span className="text-sm text-zinc-300">Answered and saved</span>
               </div>
-
-              <div className="bg-[#14151f] border border-white/10 p-4.5 rounded-xl space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="bg-white/10 text-zinc-300 text-xs font-bold px-2.5 py-1 rounded-md border border-white/10">
-                    Next (Skip) / Previous
-                  </span>
-                  <span className="text-sm font-semibold text-white">Navigate Questions</span>
-                </div>
-                <p className="text-xs text-zinc-400 leading-relaxed">
-                  Browse between questions freely without saving any modifications.
-                </p>
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 border border-white/25 rounded-md flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">2</div>
+                <span className="text-sm text-zinc-300">Not answered</span>
               </div>
-
-              <div className="bg-[#14151f] border border-white/10 p-4.5 rounded-xl space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="bg-orange-600 text-white text-xs font-bold px-2.5 py-1 rounded-md">
-                    Submit Exam
-                  </span>
-                  <span className="text-sm font-semibold text-white">Final Submission</span>
-                </div>
-                <p className="text-xs text-zinc-400 leading-relaxed">
-                  Located at the top right of your screen. Click when you have finished all questions to complete your exam submission.
-                </p>
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 border-2 border-orange-500 bg-orange-500/20 rounded-md flex items-center justify-center text-xs font-bold text-white shrink-0">3</div>
+                <span className="text-sm text-zinc-300">Current question</span>
               </div>
             </div>
+          </section>
 
-            {/* Question Palette / Navigator Guide */}
-            <div className="bg-[#14151f] border border-white/10 p-5 rounded-xl space-y-3">
-              <p className="text-xs font-bold text-zinc-300 uppercase tracking-wider">
-                Question Navigator Box Color Indicators
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 bg-emerald-600 rounded-lg flex items-center justify-center text-xs font-bold text-white shrink-0">1</div>
-                  <span className="text-xs text-zinc-300">Answered & Saved</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 border border-white/20 rounded-lg flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">2</div>
-                  <span className="text-xs text-zinc-300">Unanswered</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 border-2 border-orange-500 bg-orange-500/20 rounded-lg flex items-center justify-center text-xs font-bold text-white shrink-0">3</div>
-                  <span className="text-xs text-zinc-300">Current Question</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Confirmation Checkbox & Start CTA */}
-          <div className="bg-[#12131a] border border-white/10 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-6 shadow-2xl mb-8">
+          {/* Confirmation and start */}
+          <div className="border-t border-white/10 pt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
             <label className="flex items-start gap-3 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={agreedToTerms}
                 onChange={(e) => setAgreedToTerms(e.target.checked)}
-                className="mt-1 w-4 h-4 rounded border-white/20 text-orange-600 focus:ring-orange-500 bg-[#14151f] cursor-pointer"
+                className="mt-0.5 w-4 h-4 accent-orange-500 cursor-pointer shrink-0"
               />
-              <span className="text-xs md:text-sm text-zinc-300 leading-snug">
-                I have read and understood all instructions. I am ready to start my exam.
+              <span className="text-sm text-zinc-300 leading-snug">
+                I have read and understood the instructions. I am ready to start.
               </span>
             </label>
 
             <Button
               disabled={!agreedToTerms}
               onClick={() => setHasAcceptedInstructions(true)}
-              className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold text-sm h-12 px-8 rounded-xl shrink-0 shadow-lg shadow-orange-950/50 transition-all"
+              className="w-full sm:w-auto bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-semibold text-sm h-11 px-8 rounded-lg shrink-0"
             >
               Proceed to Exam
             </Button>
@@ -813,31 +732,32 @@ export default function ExamAttemptPage() {
           </div>
 
           {/* Question Footer Actions */}
-          <div className="shrink-0 p-3 sm:p-6 sm:px-8 border-t border-white/5 bg-[#0f0f11]/50 flex items-center justify-end">
-            <div className="flex flex-wrap justify-end gap-2 sm:gap-4">
-              <Button 
-                variant="outline" 
+          <div className="shrink-0 p-2.5 sm:p-6 sm:px-8 border-t border-white/5 bg-[#0f0f11]/50 flex items-center justify-end">
+            {/* Phones: four equal columns that fill the row. From sm up: the usual right-aligned row. */}
+            <div className="grid w-full grid-cols-4 gap-1.5 sm:flex sm:w-auto sm:flex-wrap sm:justify-end sm:gap-4">
+              <Button
+                variant="outline"
                 onClick={handlePrevious}
                 disabled={currentIndex === 0}
-                className="bg-transparent border-white/10 text-gray-300 hover:text-white hover:bg-white/10"
+                className="h-9 w-full min-w-0 px-1 text-xs sm:h-9 sm:w-auto sm:px-4 sm:text-sm bg-transparent border-white/10 text-gray-300 hover:text-white hover:bg-white/10"
               >
-                <ChevronLeft className="mr-2 h-4 w-4" /> Previous
+                <ChevronLeft className="mr-2 h-4 w-4 hidden sm:block" /> <span className="sm:hidden">Prev</span><span className="hidden sm:inline">Previous</span>
               </Button>
-              
-              <Button 
-                variant="outline" 
+
+              <Button
+                variant="outline"
                 onClick={handleNextSkip}
                 disabled={currentIndex === flattenedQuestions.length - 1}
-                className="bg-transparent border-white/10 text-gray-300 hover:text-white hover:bg-white/10"
+                className="h-9 w-full min-w-0 px-1 text-xs sm:h-9 sm:w-auto sm:px-4 sm:text-sm bg-transparent border-white/10 text-gray-300 hover:text-white hover:bg-white/10"
               >
-                Next (Skip) <ChevronRight className="ml-2 h-4 w-4" />
+                <span className="sm:hidden">Skip</span><span className="hidden sm:inline">Next (Skip)</span> <ChevronRight className="ml-2 h-4 w-4 hidden sm:block" />
               </Button>
 
               <Button 
                 variant="outline"
                 onClick={() => handleSaveAction(false)}
                 disabled={isSavingAnswer || (currentQuestion.type === "mcq" ? selectedOptions.length === 0 : (!textAnswer || textAnswer.trim() === ""))}
-                className="bg-[#18181b]merald-600/10 border-emerald-500/50 hover:bg-[#18181b]merald-600 hover:text-white text-emerald-400 font-semibold sm:min-w-[100px]"
+                className="h-9 w-full min-w-0 px-1 text-xs sm:h-9 sm:w-auto sm:px-4 sm:text-sm bg-[#18181b]merald-600/10 border-emerald-500/50 hover:bg-[#18181b]merald-600 hover:text-white text-emerald-400 font-semibold sm:min-w-[100px]"
               >
                 {isSavingAnswer ? "Saving..." : "Save"}
               </Button>
@@ -845,7 +765,7 @@ export default function ExamAttemptPage() {
               <Button 
                 onClick={() => handleSaveAction(true)}
                 disabled={isSavingAnswer || currentIndex === flattenedQuestions.length - 1 || (currentQuestion.type === "mcq" ? selectedOptions.length === 0 : (!textAnswer || textAnswer.trim() === ""))}
-                className="bg-orange-600 hover:bg-orange-700 text-white font-semibold sm:min-w-[140px]"
+                className="h-9 w-full min-w-0 px-1 text-xs sm:h-9 sm:w-auto sm:px-4 sm:text-sm bg-orange-600 hover:bg-orange-700 text-white font-semibold sm:min-w-[140px]"
               >
                 Save & Next
               </Button>

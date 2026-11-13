@@ -18,7 +18,7 @@ type StreamEvent =
   | { type: "delta"; text: string }
   | { type: "reset" }
   | { type: "result"; data: unknown }
-  | { type: "error"; message: string; status?: number };
+  | { type: "error"; message: string; status?: number; code?: string };
 
 /** Splits off the complete events at the start of `buffer`; whatever is left over is an event still arriving. */
 export function takeStreamEvents(buffer: string): { events: StreamEvent[]; rest: string } {
@@ -62,7 +62,7 @@ export async function streamPost<T>(path: string, body: unknown, handlers: ChatS
         gotResult = true;
       } else if (event.type === "error") {
         const error: any = new Error(event.message);
-        error.response = { status: event.status ?? 500, data: { message: event.message } };
+        error.response = { status: event.status ?? 500, data: { message: event.message, ...(event.code ? { code: event.code } : {}) } };
         failure = error;
       }
     }

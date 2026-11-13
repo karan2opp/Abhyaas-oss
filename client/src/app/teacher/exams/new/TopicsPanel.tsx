@@ -241,7 +241,6 @@ export function TopicsPanel({ examId, section, canEdit, refresh }: { examId: str
                 <p className="text-sm font-semibold text-white">
                   {row.topic} <span className="font-normal text-gray-500">· {row.count} question{row.count === 1 ? "" : "s"}</span>
                 </p>
-                {row.subtopics.length > 0 && <p className="mt-0.5 text-xs leading-relaxed text-gray-500">{row.subtopics.join(" · ")}</p>}
               </div>
               {canEdit && (
                 <button

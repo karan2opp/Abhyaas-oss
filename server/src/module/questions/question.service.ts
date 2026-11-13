@@ -5,6 +5,7 @@ import { ApiError } from "../../common/utils/ApiError.js";
 import { PermissionService, type Requester } from "../../common/permissions/index.js";
 import type { CreateQuestionDto, UpdateQuestionDto } from "./dto/question.dto.js";
 import { uploadToCloudinary } from "../../common/config/cloudinary.js";
+import { scheduleRubrics } from "../rubrics/rubric.service.js";
 // ── Helper: verify section is manageable by the requester (the exam's creator) ─
 const verifySectionAccess = async (sectionId: string, requester: Requester) => {
     const [section] = await db.select({
@@ -143,6 +144,10 @@ const createQuestion = async (
         return { ...question, options: optionsData };
     });
 
+    // A written question comes without a grading guide; it is written in the background (nothing happens while the exam is
+    // still being built).
+    if (data.type === "descriptive" && !data.rubric) await scheduleRubrics(section.examId);
+
     return result;
 };
 
@@ -191,6 +196,8 @@ const updateQuestion = async (questionId: string, data: UpdateQuestionDto, reque
                 ...(data.marks && { marks: data.marks }),
                 ...(uploadedImages.length > 0 && { images: uploadedImages }),
                 ...(data.rubric !== undefined && { rubric: data.rubric }),
+                // New wording makes the old grading guide wrong, so it is cleared and written again.
+                ...(data.rubric === undefined && question.type === "descriptive" && data.description && data.description !== question.description && { rubric: null }),
                 // Not on UpdateQuestionDto yet (see contentBlocks in
                 // createQuestion above) — read defensively for the review
                 // agent's update_question tool.
@@ -255,6 +262,8 @@ const updateQuestion = async (questionId: string, data: UpdateQuestionDto, reque
         const updatedOptions = await tx.select().from(options).where(eq(options.questionId, questionId))
         return { ...updated, options: updatedOptions };
     });
+
+    if (question.type === "descriptive" && result.rubric === null) await scheduleRubrics(question.examId);
 
     return result;
 };

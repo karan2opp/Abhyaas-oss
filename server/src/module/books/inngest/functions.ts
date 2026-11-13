@@ -1,5 +1,10 @@
 import { NonRetriableError } from "inngest";
+import { eq } from "drizzle-orm";
 import { inngest } from "../../../common/inngest/client.js";
+import db from "../../../common/db/index.js";
+import { books } from "../book.schema.js";
+import { bindAiUser } from "../../../common/agent/ai_context.js";
+import { toAiKeyApiError } from "../../ai_keys/ai_key.service.js";
 import { BookInputError, extractAndStoreBlocks, indexBookWindow, mergeAndSaveIndex } from "../book_pipeline.js";
 import { markBookFailed } from "../book.service.js";
 import type { WindowResult } from "../book_windows.js";
@@ -26,6 +31,9 @@ export const indexBookFunction = inngest.createFunction(
     },
     async ({ event, step }) => {
         const bookId = event.data.bookId as string;
+        // Indexing a book uses AI, billed to the teacher who uploaded it, with their own key.
+        const [book] = await db.select({ createdBy: books.createdBy }).from(books).where(eq(books.id, bookId));
+        if (book?.createdBy) bindAiUser(book.createdBy);
 
         try {
             const plan = await step.run("extract-blocks", async () => {
@@ -50,7 +58,8 @@ export const indexBookFunction = inngest.createFunction(
                 await mergeAndSaveIndex(bookId, results);
             });
         } catch (err: any) {
-            await markBookFailed(bookId, err?.message || "Unknown error indexing book");
+            const keyProblem = await toAiKeyApiError(err);
+            await markBookFailed(bookId, keyProblem?.message || err?.message || "Unknown error indexing book");
             throw err;
         }
     }

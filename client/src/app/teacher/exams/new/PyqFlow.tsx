@@ -158,14 +158,6 @@ function RetrievedQuestion({ q, index, documentTitle, removed, onToggle }: { q: 
 
       <div className="pt-4">
         <div className="flex items-center gap-2 mb-4">
-          <span
-            className={cn(
-              "px-2.5 py-1 rounded-md text-[10px] uppercase font-bold tracking-wider",
-              q.type === "mcq" ? "bg-orange-500/10 text-orange-400 border border-orange-500/30" : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-            )}
-          >
-            {q.type === "mcq" ? "Multiple Choice" : "Descriptive"}
-          </span>
           <span className="border border-white/10 bg-white/5 px-2.5 py-1 rounded-md text-gray-300 text-[10px] font-bold">Marks: {q.marks}</span>
         </div>
 

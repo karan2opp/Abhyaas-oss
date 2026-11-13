@@ -1,8 +1,11 @@
 import express from "express";
-import cookieParser from "cookie-parser";
+import { clerkMiddleware } from "@clerk/express";
 import cors from "cors";
 import { serve } from "inngest/express";
 import authRoutes from "./module/auth/auth.route.js";
+import plansRouter from "./module/plans/plan.route.js";
+import paymentsRouter, { paymentWebhook } from "./module/payments/payment.route.js";
+import aiKeyRouter from "./module/ai_keys/ai_key.route.js";
 import assignmentsRouter from "./module/assignments/assignment.route.js";
 import examRouter from "./module/exam/exam.route.js";
 import sectionsRouter from "./module/sections/section.routes.js";
@@ -20,6 +23,7 @@ import questionBankRouter from "./module/question_bank/question_bank.route.js";
 import { questionBankFunctions } from "./module/question_bank/inngest/functions.js";
 import bookRouter from "./module/books/book.route.js";
 import { bookFunctions } from "./module/books/inngest/functions.js";
+import { rubricFunctions } from "./module/rubrics/inngest/functions.js";
 import errorHandler from "./common/middleware/error.middleware.js";
 import 'dotenv/config'
 const app = express();
@@ -34,20 +38,42 @@ app.get("/health", (_req, res) => {
     res.status(200).json({ ok: true });
 });
 
+// FRONTEND_URL can list several addresses separated by commas (e.g. localhost for the laptop plus the LAN address for a
+// phone). Both the CORS check below and Clerk's allowed-origin check use the same list.
+const frontendUrls = (process.env.FRONTEND_URL || "http://localhost:3001").split(",").map((url) => url.trim()).filter(Boolean);
+
 app.use(cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: frontendUrls,
     credentials: true,
 }));
 
 // Inngest sends the results of every completed step with each call, so a long job (a whole book) quickly
 // outgrows the 100 KB default body limit. Registered before the global parser so this limit applies.
-app.use("/api/inngest", express.json({ limit: "50mb" }), serve({ client: inngest, functions: [...generationAgentFunctions, ...questionBankFunctions, ...bookFunctions] }));
+app.use("/api/inngest", express.json({ limit: "50mb" }), serve({ client: inngest, functions: [...generationAgentFunctions, ...questionBankFunctions, ...bookFunctions, ...rubricFunctions] }));
+
+// Cashfree's payment webhook. It has to come before the JSON parser below: its signature is checked against the exact raw
+// bytes of the request, which the parser would otherwise consume. It needs no sign-in (Cashfree calls it, not a person).
+app.post("/api/payments/webhook", ...paymentWebhook);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
+
+// Checks the Clerk session token the website sends in the Authorization header. It needs CLERK_SECRET_KEY and the
+// publishable key in the environment. The publishable key is public and is often saved under the website's name for it
+// (NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY), so either name works. Routes that need a signed-in user use `authenticate`
+// (auth.middleware.ts).
+const clerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+app.use(
+    clerkMiddleware({
+        ...(clerkPublishableKey ? { publishableKey: clerkPublishableKey } : {}),
+        authorizedParties: frontendUrls,
+    })
+);
 
 app.use("/api/auth", authRoutes);
+app.use("/api/plans", plansRouter);
+app.use("/api/payments", paymentsRouter);
+app.use("/api/ai-key", aiKeyRouter);
 app.use("/api/assignments", assignmentsRouter)
 app.use("/api/exams", examRouter)
 app.use("/api/sections", sectionsRouter)

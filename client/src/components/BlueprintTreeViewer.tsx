@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus, Trash2, ChevronDown, ChevronRight, AlertTriangle, BookMarked, BookOpen, Sparkles, Pencil, Check, X } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, AlertTriangle, BookMarked, Sparkles, Pencil, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -157,22 +157,23 @@ export function BlueprintTreeViewer({ blueprint, onChange, sourceLookup, onRefin
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-10">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <span className="block text-[11px] font-bold uppercase tracking-wider text-orange-400">Exam blueprint</span>
-          <h3 className="mt-1 break-words text-xl font-extrabold text-white sm:text-2xl">{blueprint.title}</h3>
-          <p className="mt-1 text-xs text-zinc-400">
-            {blueprint.sections.length > 1 && `${plural(totalQuestions, "question")} · ${plural(blueprint.sections.length, "section")}. `}Adjust topics, subtopics and counts below.
-          </p>
-        </div>
-        {onRefine && (
-          <Button
-            onClick={onRefine}
-            className="h-10 shrink-0 gap-2 self-start rounded-full bg-orange-600 px-5 text-sm font-semibold text-white hover:bg-orange-700 sm:self-auto"
-          >
+      {/* Refine with AI: at the top right, styled like the "Review with AI" button on the question list step. */}
+      {onRefine && (
+        <div className="-mb-4 flex justify-end">
+          <Button onClick={onRefine} className="h-10 gap-2 rounded-full bg-orange-600 px-5 text-sm font-semibold text-white hover:bg-orange-700">
             <Sparkles className="h-4 w-4" /> Refine with AI
           </Button>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="min-w-0">
+        <span className="block text-[11px] font-bold uppercase tracking-wider text-orange-400">Exam blueprint</span>
+        <h3 className="mt-1 break-words text-xl font-extrabold text-white sm:text-2xl">{blueprint.title}</h3>
+        {blueprint.sections.length > 1 && (
+          <p className="mt-1 text-xs text-zinc-400">
+            {plural(totalQuestions, "question")} · {plural(blueprint.sections.length, "section")}
+          </p>
         )}
       </div>
 
@@ -183,7 +184,8 @@ export function BlueprintTreeViewer({ blueprint, onChange, sourceLookup, onRefin
         const defaultName = `Section ${String.fromCharCode(65 + sIdx)}`;
 
         return (
-          <section key={sIdx} className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
+          // On phones the section runs the full width of the screen (it bleeds past the page's side gutter); from sm up it is a normal rounded card.
+          <section key={sIdx} className="-mx-4 overflow-hidden rounded-none border-y border-white/10 bg-white/[0.02] sm:mx-0 sm:rounded-xl sm:border">
             {/* Section header: open/close, name, count, and edit / delete */}
             <div className="flex items-center gap-2 border-b border-white/5 bg-white/[0.04] px-4 py-3 sm:gap-3 sm:px-5">
               {editingSection === sIdx ? (
@@ -295,11 +297,10 @@ export function BlueprintTreeViewer({ blueprint, onChange, sourceLookup, onRefin
                           <p className="py-4 text-center text-xs italic text-zinc-500">No topics in this block yet.</p>
                         ) : (
                           blockObj.topics.map((topicObj, tIdx) => (
-                            <div key={tIdx} className="space-y-3 rounded-xl border border-white/5 bg-black/30 p-3 sm:p-4">
+                            <div key={tIdx} className="space-y-3 py-1">
                               {/* Topic row */}
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-white/5 pb-3">
                                 <div className="flex min-w-[10rem] flex-1 items-center gap-2">
-                                  <BookOpen className="h-4 w-4 shrink-0 text-orange-400" />
                                   <Input
                                     value={topicObj.topic}
                                     onChange={(e) => handleUpdateTopic(sIdx, bIdx, tIdx, e.target.value)}
@@ -307,20 +308,24 @@ export function BlueprintTreeViewer({ blueprint, onChange, sourceLookup, onRefin
                                     className={cn(plainField, "h-9 min-w-0 flex-1 text-sm font-bold text-white")}
                                   />
                                 </div>
-                                <span className="shrink-0 rounded border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-xs font-bold text-orange-400">
-                                  {plural(countOf([topicObj]), "question")}
-                                </span>
-                                <button type="button" onClick={() => handleAddSubtopic(sIdx, bIdx, tIdx)} className={outlineButton}>
-                                  <Plus className="h-3.5 w-3.5" /> Subtopic
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteTopic(sIdx, bIdx, tIdx)}
-                                  aria-label="Delete topic"
-                                  className="rounded-md p-1.5 text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                                {/* The count, Subtopic button and delete icon stay together: if there is no room beside the
+                                    title they move down as one row instead of the icon dropping alone. */}
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <span className="shrink-0 rounded border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-xs font-bold text-orange-400">
+                                    {plural(countOf([topicObj]), "question")}
+                                  </span>
+                                  <button type="button" onClick={() => handleAddSubtopic(sIdx, bIdx, tIdx)} className={outlineButton}>
+                                    <Plus className="h-3.5 w-3.5" /> Subtopic
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteTopic(sIdx, bIdx, tIdx)}
+                                    aria-label="Delete topic"
+                                    className="rounded-md p-1.5 text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                               </div>
 
                               {/* Subtopic rows */}

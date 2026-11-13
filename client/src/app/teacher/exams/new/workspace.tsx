@@ -107,6 +107,7 @@ export function WorkspaceShell({
   right,
   footer,
   fill,
+  bare,
 }: {
   header?: React.ReactNode;
   left: React.ReactNode;
@@ -114,12 +115,22 @@ export function WorkspaceShell({
   footer?: React.ReactNode;
   // Let the left column fill the full height so its content (a chat) can pin to the bottom.
   fill?: boolean;
+  // Drop the rounded border and dark panel behind the content.
+  bare?: boolean;
 }) {
   const { shellRef, width, dragging, handleProps } = useResizablePanel();
   return (
     <div
       ref={shellRef}
-      className={cn("flex flex-col lg:flex-row lg:h-full lg:min-h-0 rounded-2xl border border-white/10 bg-[#070708] lg:overflow-hidden", dragging && "select-none")}
+      className={cn(
+        "flex flex-col lg:flex-row lg:h-full lg:min-h-0 lg:overflow-hidden",
+        // On phones nothing gives the page a fixed height, so a "fill" screen (a chat) or a screen with a footer bar asks
+        // for about a screenful itself. That keeps the chat input / footer at the bottom of the screen instead of right
+        // under a short body, and keeps floating buttons clear of the footer.
+        (fill || footer) && "min-h-[calc(100dvh-8rem)]",
+        !bare && "rounded-2xl border border-white/10 bg-[#070708]",
+        dragging && "select-none"
+      )}
     >
       <section className="flex-1 min-w-0 flex flex-col lg:min-h-0">
         {header && <div className="shrink-0 px-5 pt-4 pb-3 border-b border-white/5">{header}</div>}
@@ -216,17 +227,21 @@ export function ModePicker({
   selected,
   onSelect,
   onManual,
+  hideHeading,
 }: {
   selected: CreationMode | null;
   onSelect: (mode: CreationMode) => void;
   onManual?: () => void;
+  hideHeading?: boolean;
 }) {
   return (
     <div className="space-y-3">
-      <div>
-        <h3 className="text-sm font-bold text-white">How do you want to build this exam?</h3>
-        <p className="text-xs text-gray-400 mt-0.5">You can change this until questions are created.</p>
-      </div>
+      {!hideHeading && (
+        <div>
+          <h3 className="text-sm font-bold text-white">How do you want to build this exam?</h3>
+          <p className="text-xs text-gray-400 mt-0.5">You can change this until questions are created.</p>
+        </div>
+      )}
       {MODES.map((m) => {
         const Icon = m.icon;
         const isSelected = selected === m.id;

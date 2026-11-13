@@ -14,7 +14,11 @@ import {
 import { ApiError } from "../../common/utils/ApiError.js";
 import { PermissionService } from "../../common/permissions/index.js";
 import { generateJoinCode } from "../../common/utils/joinCode.js";
-import { evaluateAnswer, type TextAnswer } from "../evalutaion/evalutaion.js";
+import { isBlankAnswer, type EvaluationOutcome, type TextAnswer } from "../evalutaion/evalutaion.js";
+import { gradeAnswers } from "../evalutaion/grading.js";
+import { enqueueEvaluation } from "../../common/queue/queues.js";
+import { runAsAiUser } from "../../common/agent/ai_context.js";
+import { hasUsableAiKey } from "../ai_keys/ai_key.service.js";
 import type {
     CreateSeriesDto,
     UpdateSeriesDto,
@@ -774,77 +778,96 @@ const saveAnswer = async (data: SaveAssignmentAnswerDto, studentId: string) => {
     return created;
 };
 
-// ── Run Assignment AI Evaluation in Background ───────────────────────────────
-const runAssignmentAiEvaluation = async (submissionId: string) => {
-    try {
-        const submissionAnswersData = await db.select().from(assignmentAnswers).where(
-            eq(assignmentAnswers.submissionId, submissionId)
-        );
+// ── AI-grade an assignment submission's written answers (runs as a queued job, see workers.ts) ─────
+// Grading is paid for by the teacher who owns the assignment (with their own OpenAI key), never by the student who submitted.
+// Without a working key nothing is sent to OpenAI: the answers are left for the teacher to grade.
+// Each answer is saved as soon as it is graded. A written answer with marks already (graded earlier in this same run that was
+// interrupted) is skipped, so a retry carries on where it stopped; a student editing an answer clears its marks, so edited
+// answers are graded again. If an answer fails this throws after saving the rest, and the job tries again.
+const NOT_GRADED_KEY_NOTE = "This answer was not graded by AI because the teacher's AI key isn't working right now. Your teacher will grade it.";
+const NOT_GRADED_FAILED_NOTE = "This answer could not be graded automatically. Your teacher will grade it.";
 
-        const [submission] = await db.select().from(assignmentSubmissions).where(
-            eq(assignmentSubmissions.id, submissionId)
-        );
-        if (!submission) return;
+const saveAssignmentAnswer = async (answer: TextAnswer, result: EvaluationOutcome) => {
+    await db.update(assignmentAnswers)
+        .set({ marksAwarded: result.marksAwarded, feedback: result.feedback, updatedAt: new Date() })
+        .where(eq(assignmentAnswers.id, answer.answerId));
+};
 
-        const [assignment] = await db.select().from(assignments).where(
-            eq(assignments.id, submission.assignmentId)
-        );
-
-        const textAnswersToEvaluate: TextAnswer[] = [];
-
-        for (const answer of submissionAnswersData) {
-            const [question] = await db.select().from(assignmentQuestions).where(
-                eq(assignmentQuestions.id, answer.questionId)
-            );
-            if (!question) continue;
-
-            if (question.type === "descriptive") {
-                textAnswersToEvaluate.push({
-                    answerId: answer.id,
-                    questionId: question.id,
-                    question: question.description,
-                    modelAnswer: question.modelAnswer || "",
-                    studentAnswer: answer.textAnswer ?? "",
-                    maxMarks: question.marks,
-                    rubric: (question as any).rubric || null,
-                });
-            }
-        }
-
-        if (textAnswersToEvaluate.length > 0) {
-            for (const textAns of textAnswersToEvaluate) {
-                const { marksAwarded, feedback } = await evaluateAnswer(textAns);
-
-                await db.update(assignmentAnswers)
-                    .set({
-                        marksAwarded,
-                        feedback,
-                        updatedAt: new Date()
-                    })
-                    .where(eq(assignmentAnswers.id, textAns.answerId));
-            }
-        }
-
-        // Recalculate total marks awarded
-        const allAnswers = await db.select().from(assignmentAnswers).where(
-            eq(assignmentAnswers.submissionId, submissionId)
-        );
-        const totalMarksAwarded = allAnswers.reduce((sum, a) => sum + (a.marksAwarded ?? 0), 0);
-
-        await db.update(assignmentSubmissions)
-            .set({
-                status: "submitted",
-                totalMarksAwarded,
-                updatedAt: new Date()
-            })
-            .where(eq(assignmentSubmissions.id, submissionId));
-
-    } catch (e) {
-        console.error("Assignment background AI evaluation failed:", e);
-        await db.update(assignmentSubmissions)
-            .set({ status: "submitted", updatedAt: new Date() })
-            .where(eq(assignmentSubmissions.id, submissionId));
+const leaveAssignmentAnswersForTeacher = async (textAnswers: TextAnswer[], note: string) => {
+    for (const answer of textAnswers) {
+        await db.update(assignmentAnswers).set({ feedback: note, updatedAt: new Date() }).where(eq(assignmentAnswers.id, answer.answerId));
     }
+};
+
+// The written answers of a submission that still have no marks.
+const buildAssignmentTextAnswers = async (submissionId: string): Promise<TextAnswer[]> => {
+    const submissionAnswers = await db.select().from(assignmentAnswers).where(eq(assignmentAnswers.submissionId, submissionId));
+    const questionIds = [...new Set(submissionAnswers.map((a) => a.questionId))];
+    const questionRows = questionIds.length > 0 ? await db.select().from(assignmentQuestions).where(inArray(assignmentQuestions.id, questionIds)) : [];
+    const questionById = new Map(questionRows.map((q) => [q.id, q]));
+
+    const textAnswers: TextAnswer[] = [];
+    for (const answer of submissionAnswers) {
+        const question = questionById.get(answer.questionId);
+        if (!question || question.type !== "descriptive" || answer.marksAwarded !== null) continue;
+        textAnswers.push({
+            answerId: answer.id,
+            questionId: question.id,
+            question: question.description,
+            modelAnswer: question.modelAnswer || "",
+            studentAnswer: answer.textAnswer ?? "",
+            maxMarks: question.marks,
+            questionImages: question.images ?? null,
+            rubric: question.rubric ?? null,
+        });
+    }
+    return textAnswers;
+};
+
+// Adds up the marks and marks the submission as done.
+const finishAssignmentSubmission = async (submissionId: string) => {
+    const allAnswers = await db.select().from(assignmentAnswers).where(eq(assignmentAnswers.submissionId, submissionId));
+    const totalMarksAwarded = allAnswers.reduce((sum, a) => sum + (a.marksAwarded ?? 0), 0);
+
+    await db.update(assignmentSubmissions)
+        .set({ status: "submitted", totalMarksAwarded, updatedAt: new Date() })
+        .where(eq(assignmentSubmissions.id, submissionId));
+};
+
+export const evaluateAssignmentSubmission = async (submissionId: string): Promise<void> => {
+    const [submission] = await db.select().from(assignmentSubmissions).where(eq(assignmentSubmissions.id, submissionId));
+    if (!submission) return;
+
+    const [assignment] = await db.select().from(assignments).where(eq(assignments.id, submission.assignmentId));
+
+    const textAnswers = await buildAssignmentTextAnswers(submissionId);
+    const blanks = textAnswers.filter((a) => isBlankAnswer(a.studentAnswer));
+    const written = textAnswers.filter((a) => !isBlankAnswer(a.studentAnswer));
+    await gradeAnswers(blanks, "marks_and_feedback", saveAssignmentAnswer);
+
+    if (written.length > 0) {
+        const ownerId = assignment?.createdBy;
+        if (!ownerId || !(await hasUsableAiKey(ownerId))) {
+            await leaveAssignmentAnswersForTeacher(written, NOT_GRADED_KEY_NOTE);
+        } else {
+            const summary = await runAsAiUser(ownerId, () => gradeAnswers(written, "marks_and_feedback", saveAssignmentAnswer));
+            // OpenAI turned the teacher's key down partway: leave the rest for the teacher.
+            await leaveAssignmentAnswersForTeacher(summary.keyRejected, NOT_GRADED_KEY_NOTE);
+            if (summary.failures.length > 0) {
+                await finishAssignmentSubmission(submissionId);
+                throw summary.failures[0];
+            }
+        }
+    }
+
+    await finishAssignmentSubmission(submissionId);
+};
+
+// Called when the grading job has used up all its tries: what could not be graded is left for the teacher with a note, and
+// the submission is finished, so a student is not left waiting on "evaluating".
+export const finalizeFailedAssignmentEvaluation = async (submissionId: string): Promise<void> => {
+    await leaveAssignmentAnswersForTeacher(await buildAssignmentTextAnswers(submissionId), NOT_GRADED_FAILED_NOTE);
+    await finishAssignmentSubmission(submissionId);
 };
 
 // ── Submit Assignment (finalize; grading of descriptive answers comes later) ─
@@ -881,9 +904,13 @@ const submitAssignment = async (submissionId: string, studentId: string) => {
         .returning();
 
     if (hasDescriptive) {
-        (async () => {
-            await runAssignmentAiEvaluation(submissionId);
-        })();
+        // The submission is already saved as "evaluating". If the queue cannot be reached right now, the student's submit
+        // still succeeded: the recovery sweep (workers.ts) queues it again within minutes.
+        try {
+            await enqueueEvaluation("evaluate-assignment", { submissionId });
+        } catch (err) {
+            console.error(`[Evaluation] Could not queue assignment submission ${submissionId}; the recovery sweep will pick it up:`, err);
+        }
     }
 
     return updated;

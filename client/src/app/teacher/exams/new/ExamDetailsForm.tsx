@@ -9,6 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { DateTimeInput } from "@/components/DateTimeInput";
 
+// The "Require Feedback Form" option is hidden for now. Set this to true to show it again; nothing else needs to change.
+const SHOW_FEEDBACK_OPTION = false;
+
 export type ExamDetails = {
   title: string;
   type: "SCHEDULED" | "ON_DEMAND";
@@ -167,13 +170,15 @@ export function ExamDetailsForm({
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-4 p-4 bg-[#050505] border border-white/10 rounded-lg">
-        <div className="space-y-0.5">
-          <label className={labelClass}>Require Feedback Form</label>
-          <p className="text-xs text-gray-500">Ask students for feedback after they submit the exam.</p>
+      {SHOW_FEEDBACK_OPTION && (
+        <div className="flex items-center justify-between gap-4 p-4 bg-[#050505] border border-white/10 rounded-lg">
+          <div className="space-y-0.5">
+            <label className={labelClass}>Require Feedback Form</label>
+            <p className="text-xs text-gray-500">Ask students for feedback after they submit the exam.</p>
+          </div>
+          <Switch checked={values.requireFeedback} onCheckedChange={(v) => onChange({ requireFeedback: v })} />
         </div>
-        <Switch checked={values.requireFeedback} onCheckedChange={(v) => onChange({ requireFeedback: v })} />
-      </div>
+      )}
     </div>
   );
 }

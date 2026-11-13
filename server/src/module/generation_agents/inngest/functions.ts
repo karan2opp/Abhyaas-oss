@@ -1,5 +1,8 @@
 import { createId } from "@paralleldrive/cuid2";
 import { inngest } from "../../../common/inngest/client.js";
+import { bindAiUser } from "../../../common/agent/ai_context.js";
+import { toAiKeyApiError } from "../../ai_keys/ai_key.service.js";
+import { recordUsage } from "../../plans/quota.service.js";
 import { generateSectionSubtopics } from "../agents/subtopics_agent.js";
 import { generateTopicQuestions, type GenerateTopicQuestionsInput } from "../agents/generation_agent.js";
 import { verifyAndRepairTopicQuestions } from "../topic_question_verification.js";
@@ -54,6 +57,9 @@ export const generateBlueprintFunction = inngest.createFunction(
     },
     async ({ event, step }) => {
         const sessionId = event.data.sessionId as string;
+        // The AI work below is billed to the teacher this session belongs to, with their own key.
+        const owner = (await getSession(sessionId))?.createdBy;
+        if (owner) bindAiUser(owner);
 
         try {
             const session = await step.run("load-session", async () => {
@@ -131,7 +137,9 @@ export const generateBlueprintFunction = inngest.createFunction(
                 console.log(`[generation-agent-generate-blueprint] allocated questions and saved blueprint for session ${sessionId}`);
             });
         } catch (err: any) {
-            await markBlueprintFailed(sessionId, err?.message || "Unknown error generating blueprint");
+            // A problem with the person's own OpenAI key gets a message they can act on, not OpenAI's raw one.
+            const keyProblem = await toAiKeyApiError(err);
+            await markBlueprintFailed(sessionId, keyProblem?.message || err?.message || "Unknown error generating blueprint");
             throw err;
         }
     }
@@ -170,6 +178,9 @@ export const generateQuestionsFunction = inngest.createFunction(
     },
     async ({ event, step }) => {
         const sessionId = event.data.sessionId as string;
+        // The AI work below is billed to the teacher this session belongs to, with their own key.
+        const owner = (await getSession(sessionId))?.createdBy;
+        if (owner) bindAiUser(owner);
 
         try {
             const session = await step.run("load-session-for-questions", async () => {
@@ -243,6 +254,8 @@ export const generateQuestionsFunction = inngest.createFunction(
                 await step.run(`save-section-questions-${sanitizeStepId(section.name)}`, async () => {
                     const total = generatedTopics.reduce((n, t) => n + t.questions.length, 0);
                     await saveSectionQuestions(sessionId, { name: section.name, subject: section.subject, topics: generatedTopics });
+                    // Charged to the teacher who asked for the exam, for the questions actually produced.
+                    await recordUsage(session.createdBy, "question_generation", total);
 
                     console.log(`[generation-agent-generate-questions] saved ${total} question(s) for section "${section.name}"`);
                 });
@@ -253,7 +266,8 @@ export const generateQuestionsFunction = inngest.createFunction(
                 console.log(`[generation-agent-generate-questions] all sections generated for session ${sessionId}`);
             });
         } catch (err: any) {
-            await markQuestionsFailed(sessionId, err?.message || "Unknown error generating questions");
+            const keyProblem = await toAiKeyApiError(err);
+            await markQuestionsFailed(sessionId, keyProblem?.message || err?.message || "Unknown error generating questions");
             throw err;
         }
     }

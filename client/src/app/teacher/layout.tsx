@@ -3,15 +3,20 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, LogOut, ChevronsLeft, ChevronsRight, Menu, X, BookOpen, User, FileText, ClipboardList } from "lucide-react";
+import { LayoutDashboard, LogOut, ChevronsLeft, ChevronsRight, Menu, X, BookOpen, User, FileText, ClipboardList, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { RoleSwitch } from "@/components/RoleSwitch";
+import { AiKeyBanner } from "@/components/AiKeyBanner";
 
+// Plans are hidden while teachers use their own OpenAI key. When plans return, add the link back:
+//   { name: "Plans", href: "/teacher/plans", icon: CreditCard }
 const sidebarLinks = [
   { name: "Dashboard", href: "/teacher", icon: LayoutDashboard },
   { name: "Exams", href: "/teacher/exams", icon: FileText },
   { name: "Assignments", href: "/teacher/assignments", icon: ClipboardList },
+  { name: "AI Key", href: "/teacher/ai-key", icon: KeyRound },
   { name: "Profile", href: "/teacher/profile", icon: User },
 ];
 
@@ -30,6 +35,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     if (isInitialized) {
       if (!user) {
         router.push("/auth/login");
+      } else if (!user.onboarded) {
+        router.replace("/onboarding");
       } else if (user.role !== "teacher") {
         router.replace(`/${user.role}`);
       }
@@ -38,7 +45,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col md:flex-row h-screen w-full bg-[#050505] text-gray-100 font-sans overflow-hidden">
+      <div className="flex flex-col md:flex-row h-dvh w-full bg-[#050505] text-gray-100 font-sans overflow-hidden">
         
         {!hideSidebar && (
         <>
@@ -131,6 +138,9 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
           {/* Bottom Actions */}
           <div className="p-3 border-t border-white/10 space-y-2 mt-auto">
+            {/* Switch between the student and teacher side */}
+            <RoleSwitch collapsed={isCollapsed} />
+
             {/* User Profile Badge */}
             <div className={cn(
               "flex items-center gap-2.5 p-2 rounded-lg bg-zinc-900/60 border border-white/5",
@@ -168,6 +178,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scrollbar relative bg-[#050505]">
+          <AiKeyBanner />
           {children}
         </main>
       </div>

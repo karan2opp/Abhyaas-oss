@@ -13,18 +13,15 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "docker:up": "docker compose -f ../docker-compose.yml --env-file .env up -d",
-    "inngest:dev":"npx inngest-cli@latest dev -u http://localhost:8001/api/inngest",
+    "inngest:dev": "npx inngest-cli@latest dev -u http://localhost:8001/api/inngest",
     "dev:all": "npm run dev"
   },
   "author": "",
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "@types/bcrypt": "^6.0.0",
-    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.1.0",
     "@types/node": "^25.9.1",
     "@types/pg": "^8.20.0",
@@ -35,12 +32,11 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
+    "@clerk/express": "^2.1.86",
     "@paralleldrive/cuid2": "^3.3.0",
     "@qdrant/js-client-rest": "^1.19.0",
-    "bcrypt": "^6.0.0",
     "bullmq": "^6.1.2",
     "cloudinary": "^2.10.0",
-    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
@@ -48,12 +44,10 @@
     "express-rate-limit": "^8.5.2",
     "inngest": "^4.18.1",
     "ioredis": "^5.11.1",
-    "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "openai": "^6.44.0",
     "p-limit": "^7.3.0",
     "pg": "^8.21.0",
-    "resend": "^6.12.4",
     "zod": "^4.4.3"
   }
 }

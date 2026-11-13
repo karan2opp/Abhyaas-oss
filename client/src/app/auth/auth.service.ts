@@ -1,13 +1,24 @@
 import api from "../../utils/axios";
 
 /**
- * Fetch current user
+ * Fetch the app's record of the signed-in user (role, profile). Only called once Clerk says someone is signed in.
  */
 export const getMe = async (set: any) => {
   try {
     set({ loading: true, error: null });
 
-    const res = await api.get("/auth/me");
+    // If the server did not answer at all (for example while it is restarting), try again a few times before giving up.
+    // An answer with an error status is a real result and is not retried.
+    let res;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        res = await api.get("/auth/me");
+        break;
+      } catch (err: any) {
+        if (err.response || attempt >= 4) throw err;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
     const userData = res.data?.data;
 
     set({
@@ -30,40 +41,17 @@ export const getMe = async (set: any) => {
 };
 
 /**
- * Refresh access token — preserve user data
+ * Sign out of Clerk (which ends the session) and clear the app's record of the user.
  */
-export const refreshToken = async (set: any) => {
-  try {
-    const res = await api.post("/auth/refreshToken");
-    const newToken = res.data?.data?.accessToken;
-
-    if (!newToken) throw new Error("No access token received");
-
-    // ✅ Only update token — keep user/isLoggedIn unchanged
-    set({ accessToken: newToken });
-    return true;
-  } catch (error: any) {
-    // ❌ Don't clear user on refresh failure — let getMe handle auth
-    set({
-      accessToken: null,
-      error: error.response?.data?.message || "Failed to refresh token",
-    });
-    return false;
-  }
-};
-
 export const logoutService = async (set: any) => {
   try {
-    await api.post("/auth/logout", {}, { withCredentials: true }); // clears httpOnly cookie
+    await (window as any).Clerk?.signOut();
   } catch (err: any) {
-    if (err.response?.status !== 401) {
-      console.error("Logout failed:", err.message);
-    }
-    // still clear frontend state even if backend fails
+    console.error("Sign out failed:", err?.message);
   } finally {
+    // still clear frontend state even if Clerk fails
     set({
       user: null,
-      accessToken: null,
       isLoggedIn: false,
       loading: false,
       error: null,
@@ -71,58 +59,27 @@ export const logoutService = async (set: any) => {
   }
 };
 
-export const forgotPasswordService = async (email: string) => {
+/**
+ * A new user chooses whether they start as a student or a teacher. Allowed once.
+ */
+export const onboardService = async (role: "student" | "teacher") => {
   try {
-    await api.post("/auth/forgotPassword", { email });
-    return { success: true };
-  } catch (error: any) {
-    throw new Error(error.response?.data?.message || "Failed to send reset email");
-  }
-};
-
-export const resetPasswordService = async (email: string, otp: string, password: string) => {
-  try {
-    await api.put(`/auth/resetPassword`, { email, otp, password });
-    return { success: true };
-  } catch (error: any) {
-    throw new Error(error.response?.data?.message || "Failed to reset password");
-  }
-};
-
-export const loginService = async (credentials: any) => {
-  try {
-    const res = await api.post("/auth/login", credentials);
+    const res = await api.post("/auth/onboard", { role });
     return res.data;
   } catch (error: any) {
-    throw new Error(error.response?.data?.message || "Failed to login");
+    throw new Error(error.response?.data?.message || "Could not save your choice");
   }
 };
 
-export const registerService = async (userData: any) => {
+/**
+ * Switch between student and teacher. Allowed at any time.
+ */
+export const switchRoleService = async (role: "student" | "teacher") => {
   try {
-    // userData.role is "teacher" or "student", chosen on the register form.
-    const res = await api.post("/auth/register", userData);
+    const res = await api.put("/auth/role", { role });
     return res.data;
   } catch (error: any) {
-    throw new Error(error.response?.data?.message || "Failed to register");
-  }
-};
-
-export const verifyOtpService = async (data: { email: string; otp: string }) => {
-  try {
-    const res = await api.post("/auth/verify-otp", data);
-    return res.data;
-  } catch (error: any) {
-    throw new Error(error.response?.data?.message || "Failed to verify OTP");
-  }
-};
-
-export const resendOtpService = async (email: string) => {
-  try {
-    const res = await api.post("/auth/resend-otp", { email });
-    return res.data;
-  } catch (error: any) {
-    throw new Error(error.response?.data?.message || "Failed to resend code");
+    throw new Error(error.response?.data?.message || "Could not switch role");
   }
 };
 

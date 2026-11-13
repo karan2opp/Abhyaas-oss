@@ -12,3 +12,8 @@ export * from "../../module/questions/question-type.enum.js";
 export * from "../../module/generation_agents/exam_intent_session.schema.js";
 export * from "../../module/question_bank/question_bank.schema.js";
 export * from "../../module/books/book.schema.js";
+export * from "../../module/plans/plan.schema.js";
+export * from "../../module/plans/user_plan.schema.js";
+export * from "../../module/plans/usage.schema.js";
+export * from "../../module/payments/payment_order.schema.js";
+export * from "../../module/ai_keys/ai_key.schema.js";

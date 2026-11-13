@@ -7,7 +7,10 @@ import { GraduationCap, LayoutDashboard, LogOut, ChevronsLeft, ChevronsRight, Me
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { RoleSwitch } from "@/components/RoleSwitch";
 
+// Plans are hidden for now (teachers use their own OpenAI key, and students don't pay for AI). When plans return, add:
+//   { name: "Plans", href: "/student/plans", icon: CreditCard }
 const sidebarLinks = [
   { name: "Dashboard", href: "/student", icon: LayoutDashboard },
   { name: "Exams", href: "/student/exams", icon: FileText },
@@ -28,6 +31,8 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
     if (isInitialized) {
       if (!user) {
         router.push("/auth/login");
+      } else if (!user.onboarded) {
+        router.replace("/onboarding");
       } else if (user.role !== "student") {
         router.replace(`/${user.role}`);
       }
@@ -39,7 +44,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col md:flex-row h-screen w-full bg-[#050505] text-gray-100 font-sans overflow-hidden">
+      <div className="flex flex-col md:flex-row h-dvh w-full bg-[#050505] text-gray-100 font-sans overflow-hidden">
         
         {/* Mobile Header */}
         {!hideSidebar && (
@@ -131,6 +136,9 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
             {/* Bottom Actions */}
             <div className="p-3 border-t border-white/10 space-y-2 mt-auto">
+              {/* Switch between the student and teacher side */}
+              <RoleSwitch collapsed={isCollapsed} />
+
               {/* User Profile Badge */}
               <div className={cn(
                 "flex items-center gap-2.5 p-2 rounded-lg bg-zinc-900/60 border border-white/5",

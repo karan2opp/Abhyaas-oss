@@ -51,17 +51,10 @@ const MCQQuestionZodSchema = z.object({
     correct_option: z.enum(["A", "B", "C", "D"]).describe("The correct option key (A, B, C, or D)"),
 });
 
-const RubricCategoryZodSchema = z.object({
-    name: z.string().describe("The name of the category (e.g. Definition, Concept Knowledge, Example, Correct Application, Depth of Reasoning)"),
-    weight: z.number().describe("The weight of this category (float between 0 and 1); all categories for a question sum to 1"),
-    key_points: z.array(z.string()).describe("Key points expected for this category"),
-});
-
 const DescriptiveQuestionZodSchema = z.object({
     ...baseQuestionFields,
     type: z.literal("descriptive"),
     question_text: z.string().describe("The text of the descriptive question"),
-    rubric: z.object({ categories: z.array(RubricCategoryZodSchema) }).describe("The grading rubric for this question"),
 });
 
 // Raw model output — one call's worth of questions for a single topic. Marks

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { getMe, refreshToken, logoutService } from "../app/auth/auth.service";
+import { getMe, logoutService } from "../app/auth/auth.service";
 
 interface User {
   // The API returns `id` (Postgres/Drizzle). This was typed `_id` from an
@@ -8,44 +8,39 @@ interface User {
   name: string;
   email: string;
   role: 'student' | 'teacher';
+  // False until a new user has chosen student or teacher (see /onboarding).
+  onboarded: boolean;
   avatarUrl?: string;
+  // The 10-digit number on the account, if any. Needed to pay (Cashfree requires one for the payer).
+  phone?: string | null;
 }
 
+// Signing in is handled by Clerk. This only holds the app's own record of the signed-in person (their role and profile),
+// which AuthInitializer loads from /auth/me once Clerk says someone is signed in.
 interface AuthState {
   user: User | null;
-  accessToken: string | null;
   isLoggedIn: boolean;
   loading: boolean;
   error: string | null;
   isInitialized: boolean;
 
-  setUser: (userData: User, token: string | null) => void;
-  setAccessToken: (token: string) => void;
+  setUser: (userData: User) => void;
   setInitialized: (value: boolean) => void;
   fetchCurrentUser: () => Promise<any>;
-  refreshAccessToken: () => Promise<boolean>;
   logout: () => Promise<void>;
   clearError: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  // ── State (all fields declared upfront) ─────────────
-  user: null,              // { _id, name, email, role }
-  accessToken: null,       // 🔐 Memory-only (no persist)
+  user: null,
   isLoggedIn: false,
   loading: false,
   error: null,
   isInitialized: false,
 
-  // ── Actions ─────────────────────────────────────────
-
-  /**
-   * Set user + token after login
-   */
-  setUser: (userData, token) => {
+  setUser: (userData) => {
     set({
       user: userData,
-      accessToken: token,
       isLoggedIn: true,
       isInitialized: true,
       loading: false,
@@ -53,29 +48,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     });
   },
 
-  /**
-   * Update access token only
-   */
-  setAccessToken: (token) => set({ accessToken: token }),
-
   setInitialized: (value) => set({ isInitialized: value }),
 
-  /**
-   * Fetch current user from API
-   */
   fetchCurrentUser: async () => await getMe(set),
 
-  /**
-   * Refresh access token
-   */
-  refreshAccessToken: () => refreshToken(set),
-
-  /**
-   * Logout — clear all auth state
-   */
+  /** Signs out of Clerk and clears the app's record of the user. */
   logout: () => logoutService(set),
 
-  // ── Optional: Helper to clear error ─────────────────
   clearError: () => set({ error: null }),
 }));
 
