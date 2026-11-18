@@ -107,11 +107,12 @@
     @apply font-heading tracking-tight;
   }
 
-  /* Override browser autofill styling */
-  input:-webkit-autofill,
-  input:-webkit-autofill:hover, 
-  input:-webkit-autofill:focus, 
-  input:-webkit-autofill:active {
+  /* Override browser autofill styling (dark theme only: the light theme has its own rule in light-theme.css, and an !important rule
+     inside a layer would beat it) */
+  html:not(.light) input:-webkit-autofill,
+  html:not(.light) input:-webkit-autofill:hover,
+  html:not(.light) input:-webkit-autofill:focus,
+  html:not(.light) input:-webkit-autofill:active {
       -webkit-box-shadow: 0 0 0 50px #0f0f11 inset !important;
       -webkit-text-fill-color: #F8FAFC !important;
       color: #F8FAFC !important;

@@ -121,6 +121,6 @@ html.light:not(:has(.landing)) [class*="color-scheme:dark"]{color-scheme:light}
 html.light:not(:has(.landing)) option{background-color:#f5e3b8;color:#18181b}
 html.light:not(:has(.landing)) .custom-scrollbar::-webkit-scrollbar-thumb{background:rgba(24,24,27,.25)}
 html.light:not(:has(.landing)) .custom-scrollbar::-webkit-scrollbar-thumb:hover{background:rgba(24,24,27,.4)}
-html.light input:-webkit-autofill,html.light input:-webkit-autofill:hover,html.light input:-webkit-autofill:focus{
+html.light input:-webkit-autofill,html.light input:-webkit-autofill:hover,html.light input:-webkit-autofill:focus,html.light input:-webkit-autofill:active{
   -webkit-box-shadow:0 0 0 50px #f5e3b8 inset !important;-webkit-text-fill-color:#18181b !important;color:#18181b !important;caret-color:#18181b !important}
 
