@@ -67,6 +67,9 @@ export const updateAssignmentSchema = z.object({
     startDate: z.coerce.date().nullable().optional(),
     dueDate: z.coerce.date().nullable().optional(),
     dayGap: z.number().int().min(1).nullable().optional(),
+    // "Evaluate written answers with AI", and how the teacher marks them (the grading guides are written from it).
+    aiEvaluation: z.boolean().optional(),
+    evaluationScheme: z.string().trim().max(4000, { message: "The evaluation scheme cannot exceed 4000 characters" }).nullable().optional(),
 });
 
 export type UpdateAssignmentDto = z.infer<typeof updateAssignmentSchema>;
@@ -145,3 +148,10 @@ export const joinAssignmentSchema = z.object({
 });
 
 export type JoinAssignmentDto = z.infer<typeof joinAssignmentSchema>;
+
+// The assignment's working exam, whose questions are copied into it on publish.
+export const copyFromExamSchema = z.object({
+    examId: z.string({ message: "Exam ID is required" }).min(1, "Exam ID cannot be empty"),
+});
+
+export type CopyFromExamDto = z.infer<typeof copyFromExamSchema>;

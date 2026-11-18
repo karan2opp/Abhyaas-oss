@@ -114,7 +114,7 @@ export async function questionReviewAgentTurn(
     requester: Requester,
     hooks?: StreamHooks
 ): Promise<QuestionReviewResult> {
-    const client = await getClientForModel(env.GENERATION_MODEL);
+    const client = await getClientForModel(env.GENERATION_MODEL, "question_review");
 
     const allChangeLog: string[] = [];
     let done = false;

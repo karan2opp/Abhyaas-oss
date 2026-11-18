@@ -1,4 +1,4 @@
-import { pgTable, text, integer, doublePrecision, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, doublePrecision, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createId } from "@paralleldrive/cuid2";
 import { users } from "../auth/user.schema.js";
 
@@ -25,6 +25,12 @@ export const exams = pgTable("exams", {
   // Whether the written questions' grading guides are ready. "pending" holds AI grading back (students' answers wait in
   // "evaluating"); "failed" means the guides could not be written, and answers are then graded without them.
   rubricStatus: text("rubric_status").$type<"pending" | "ready" | "failed">().default("ready").notNull(),
+  // "Evaluate written answers with AI" on the publish step. Off: no grading guides are written and written answers wait for
+  // the teacher to grade them. MCQs are marked by comparing with the correct option either way, never by AI.
+  aiEvaluation: boolean("ai_evaluation").default(true).notNull(),
+  // The past papers (question bank documents) this exam's questions were taken from. Set when questions are added from
+  // past papers, so adding a topic later offers those papers' topics. null for exams made any other way.
+  sourceDocumentIds: jsonb("source_document_ids").$type<string[]>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

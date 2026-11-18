@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { OptionValue, QuestionText, type ContentBlock } from "@/components/QuestionContentBlocks";
 import {
   getAssignmentByIdService,
   getSubmissionByIdService,
@@ -29,7 +30,8 @@ interface Question {
   description: string;
   marks: number;
   modelAnswer: string | null;
-  options: { id: string; value: string; isCorrect: boolean }[];
+  contentBlocks?: ContentBlock[] | null;
+  options: { id: string; value: string; isCorrect: boolean; isCode?: boolean }[];
 }
 
 interface Submission {
@@ -198,9 +200,7 @@ export default function GradeSubmissionPage() {
             return (
               <div key={a.id}>
                 <div className="flex items-start justify-between gap-4 mb-3">
-                  <p className="text-white text-base font-medium leading-relaxed">
-                    <span className="font-bold">Q{idx + 1}:</span> {q.description}
-                  </p>
+                  <QuestionText label={`Q${idx + 1}:`} description={q.description} blocks={q.contentBlocks} className="text-white text-base font-medium leading-relaxed" />
                   <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-white/5 text-gray-300 border border-white/10 shrink-0 whitespace-nowrap">
                     {q.marks} marks
                   </span>
@@ -219,7 +219,7 @@ export default function GradeSubmissionPage() {
                         >
                           {selected && <span className="font-bold">●</span>}
                           {o.isCorrect && <Check className="h-3.5 w-3.5" />}
-                          {o.value}
+                          <OptionValue value={o.value} isCode={o.isCode} size="compact" />
                         </div>
                       );
                     })}

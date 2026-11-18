@@ -7,6 +7,7 @@ import { GraduationCap, BookOpen, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { onboardService, switchRoleService } from "@/app/auth/auth.service";
 import { cn } from "@/lib/utils";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 
 const choices = [
   { role: "student" as const, title: "I am a student", desc: "Take exams and assignments.", icon: GraduationCap },
@@ -48,6 +49,7 @@ export default function OnboardingPage() {
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-[#050505] px-4 py-10 font-sans text-white">
+      <ThemeSwitch className="fixed right-3 top-3 z-20" />
       <div className="w-full max-w-md space-y-8">
         <div className="space-y-2 text-center">
           <h1 className="text-2xl font-bold tracking-tight">Welcome to Abhyas</h1>

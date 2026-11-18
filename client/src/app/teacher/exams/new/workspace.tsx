@@ -1,10 +1,58 @@
 "use client";
 
 import React from "react";
-import { Sparkles, Library, BookOpen, Check, Plus } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Sparkles, Library, BookOpen, Check, Plus, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export type CreationMode = "ai" | "pyq" | "source";
+
+// The two ways to go back while making an exam. "Previous" sits at the top left of the page and goes one step back;
+// "Back" sits at the bottom left, in the footer, and leaves the exam (asking about saving first). The new-exam page
+// provides both ends: where to leave to, and the place at the top where Previous is shown. Outside that page there is
+// no provider, so these render nothing and each screen keeps its own buttons.
+type WizardNav = { leave: () => void; slot: HTMLElement | null };
+const WizardNavContext = React.createContext<WizardNav | null>(null);
+export const WizardNavProvider = WizardNavContext.Provider;
+export const useWizardNav = () => React.useContext(WizardNavContext);
+
+const navButton = "text-gray-400 hover:text-white h-10 px-4 text-sm font-semibold";
+
+export function WizardBack() {
+  const nav = useWizardNav();
+  if (!nav) return null;
+  return (
+    <Button variant="ghost" onClick={nav.leave} aria-label="Back to exams" className={`${navButton} whitespace-nowrap px-2 sm:px-4`}>
+      <ArrowLeft className="h-4 w-4 mr-1.5" /> Back
+    </Button>
+  );
+}
+
+export function WizardPrevious({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+  const nav = useWizardNav();
+  if (!nav?.slot) return null;
+  return createPortal(
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-2 py-1.5 pl-1 pr-3 text-base font-semibold text-gray-300 hover:text-white transition-colors disabled:opacity-50 disabled:pointer-events-none"
+    >
+      <ArrowLeft className="h-5 w-5" /> Previous
+    </button>,
+    nav.slot
+  );
+}
+
+/** The two buttons together, for a footer's left side. */
+export function WizardNavButtons({ onPrevious, previousDisabled }: { onPrevious: () => void; previousDisabled?: boolean }) {
+  return (
+    <>
+      <WizardBack />
+      <WizardPrevious onClick={onPrevious} disabled={previousDisabled} />
+    </>
+  );
+}
 
 export const MODES: { id: CreationMode; label: string; description: string; icon: React.ElementType; available: boolean }[] = [
   {
@@ -32,7 +80,7 @@ export const MODES: { id: CreationMode; label: string; description: string; icon
 
 export const STEPS: Record<CreationMode, string[]> = {
   ai: ["Details", "Topics", "Preferences", "Subtopics", "Review", "Publish"],
-  pyq: ["Details", "Papers", "Settings", "Preview", "Review", "Publish"],
+  pyq: ["Details", "Papers", "Sections", "Goal", "Preview", "Review", "Publish"],
   source: ["Details", "Book", "Topics", "Preferences", "Subtopics", "Review", "Publish"],
 };
 
@@ -119,6 +167,9 @@ export function WorkspaceShell({
   bare?: boolean;
 }) {
   const { shellRef, width, dragging, handleProps } = useResizablePanel();
+  // A screen with no footer of its own (the start, the loading screens) still needs a way to leave the exam.
+  const nav = useWizardNav();
+  if (!footer && nav) footer = <WizardBack />;
   return (
     <div
       ref={shellRef}

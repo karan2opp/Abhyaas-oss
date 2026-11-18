@@ -414,7 +414,7 @@ export default function ResultsPage() {
                           components={{
                             pre: ({ children }) => {
                               return (
-                                <div className="my-3 rounded-xl overflow-hidden border border-white/10 bg-[#09090b]">
+                                <div className="my-3 rounded-xl overflow-hidden border border-white/10 bg-[#09090b] keep-dark">
                                   <div className="p-4 overflow-x-auto custom-scrollbar font-normal">
                                     {children}
                                   </div>
@@ -447,8 +447,8 @@ export default function ResultsPage() {
                       </div>
                       {selectedAnswer?.evaluatedBy && (
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${selectedAnswer.evaluatedBy === "teacher" ? "bg-[#18181b]merald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-orange-500/10 text-orange-400 border border-orange-500/30"}`}>
-                          {selectedAnswer.evaluatedBy === "teacher" ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
-                          Graded by {selectedAnswer.evaluatedBy === "teacher" ? "you" : "AI"}
+                          {selectedAnswer.evaluatedBy === "teacher" ? <User className="h-3 w-3" /> : selectedQuestion?.type === "mcq" ? null : <Bot className="h-3 w-3" />}
+                          {selectedAnswer.evaluatedBy === "teacher" ? "Graded by you" : selectedQuestion?.type === "mcq" ? "Marked automatically" : "Graded by AI"}
                         </span>
                       )}
                     </div>
@@ -567,15 +567,17 @@ export default function ResultsPage() {
                       Saving locks manual grades from AI overwrites.
                     </p>
                     <div className="flex items-center gap-2 ml-auto">
-                      <Button
-                        variant="outline"
-                        className="bg-transparent border-white/10 text-white hover:bg-white/5 text-xs h-9 px-3"
-                        onClick={handleEvaluateWithAi}
-                        disabled={evaluatingAi || savingGrade}
-                      >
-                        <Bot className="mr-1.5 h-3.5 w-3.5 text-orange-400" />
-                        {evaluatingAi ? "Evaluating..." : "Evaluate with AI"}
-                      </Button>
+                      {exam?.aiEvaluation !== false && (
+                        <Button
+                          variant="outline"
+                          className="bg-transparent border-white/10 text-white hover:bg-white/5 text-xs h-9 px-3"
+                          onClick={handleEvaluateWithAi}
+                          disabled={evaluatingAi || savingGrade}
+                        >
+                          <Bot className="mr-1.5 h-3.5 w-3.5 text-orange-400" />
+                          {evaluatingAi ? "Evaluating..." : "Evaluate with AI"}
+                        </Button>
+                      )}
                       <Button
                         className="bg-[#18181b]merald-600 hover:bg-[#18181b]merald-700 text-white text-xs font-semibold h-9 px-5 shadow-lg shadow-emerald-900/30"
                         onClick={handleSaveGrade}

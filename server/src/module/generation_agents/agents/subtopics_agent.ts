@@ -39,7 +39,7 @@ export async function generateSectionSubtopics(
     educationLevel?: EducationLevel | undefined;
   }
 ): Promise<SectionSubtopicsOutput> {
-  const client = await getClientForModel(env.GENERATION_MODEL);
+  const client = await getClientForModel(env.GENERATION_MODEL, "subtopics");
 
   const payload = {
     subject: section.subject,

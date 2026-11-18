@@ -18,6 +18,8 @@ const ExtractedImageZodSchema = z.object({
 const ExtractedLineZodSchema = z.object({
     text: z.string(),
     bbox: z.array(z.number()),
+    // Most of the line is in a fixed-width font, which is how papers print program code.
+    mono: z.boolean().optional(),
 });
 
 const ExtractedTableZodSchema = z.object({

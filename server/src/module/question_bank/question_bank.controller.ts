@@ -16,6 +16,8 @@ import {
 } from "./question_bank.service.js";
 import { deleteQuestionBankPointsByDocument, type QuestionBankAccess } from "./qdrant_client.js";
 import { generateQuestionsFromDocuments, listTopicsForDocuments } from "./question_bank_generator.js";
+import { getPaperTopicView, pickQuestionsFromPapers } from "./question_bank_picker.js";
+import { examQuestionTexts } from "../exam/exam_topics.service.js";
 import { QuestionTypeZodEnum } from "../generation_agents/Types/inputExam.js";
 
 const accessOf = (req: Request): QuestionBankAccess => ({
@@ -147,7 +149,7 @@ export const deleteDocumentHandler = async (req: Request, res: Response, next: N
     }
 };
 
-async function assertDocumentsReady(documentIds: string[], req: Request) {
+export async function assertDocumentsReady(documentIds: string[], req: Request) {
     const documents = await getDocumentsByIds(documentIds);
     if (documents.length !== documentIds.length) throw ApiError.notFound("One or more documents were not found");
     // Generation feeds these documents' contents into the response, so the
@@ -155,6 +157,7 @@ async function assertDocumentsReady(documentIds: string[], req: Request) {
     for (const document of documents) assertCanAccessDocument(document, req);
     const notReady = documents.find((d) => d.status !== "completed");
     if (notReady) throw ApiError.badRequest(`Document "${notReady.title}" is still processing`);
+    return documents;
 }
 
 const GenerateFromDocumentsRequestZodSchema = z.object({
@@ -229,6 +232,58 @@ export const searchQuestionBankHandler = async (req: Request, res: Response, nex
         });
 
         res.json({ success: true, data: results });
+    } catch (err) {
+        next(err);
+    }
+};
+
+// One paper's broad topics and subtopics, counted for one question type, for the topic picker.
+export const getPaperTopicsHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const questionType = QuestionTypeZodEnum.safeParse(req.query.questionType);
+        if (!questionType.success) throw ApiError.badRequest("questionType must be mcq or descriptive");
+
+        const [document] = await assertDocumentsReady([String(req.params.documentId)], req);
+        // Opened from an exam's topic picker: questions already in that exam are counted as in it, not as available.
+        const examId = typeof req.query.examId === "string" && req.query.examId ? req.query.examId : null;
+        const exclude = examId ? await examQuestionTexts(examId, { id: req.user!.id, role: req.user!.role }) : undefined;
+        res.json({ success: true, data: await getPaperTopicView(document!, questionType.data, exclude) });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const PickQuestionsRequestZodSchema = z.object({
+    picks: z
+        .array(
+            z.object({
+                documentId: z.string().min(1),
+                subtopic: z.string().trim().min(1).max(200),
+                count: z.number().int().min(1).max(50),
+                // Which exam section the pick is for, when several are built at once.
+                section: z.string().trim().min(1).max(100).optional(),
+            })
+        )
+        .min(1)
+        .max(60),
+    goal: z.string().trim().max(500).optional(),
+    questionType: QuestionTypeZodEnum,
+    marks: z.number().positive(),
+}).refine((data) => data.picks.reduce((n, p) => n + p.count, 0) <= 100, { message: "At most 100 questions can be requested at once", path: ["picks"] });
+
+// Fills the picks (paper + subtopic + how many) chosen in the topic picker with real questions from the papers.
+export const pickQuestionsHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const parsed = PickQuestionsRequestZodSchema.safeParse(req.body);
+        if (!parsed.success) {
+            const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+            throw ApiError.badRequest(`Invalid request body: ${issues}`);
+        }
+
+        const documentIds = [...new Set(parsed.data.picks.map((p) => p.documentId))];
+        const documents = await assertDocumentsReady(documentIds, req);
+
+        res.json({ success: true, data: await pickQuestionsFromPapers(parsed.data, documents) });
     } catch (err) {
         next(err);
     }

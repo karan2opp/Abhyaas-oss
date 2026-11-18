@@ -83,6 +83,11 @@ export const getQuestions = async (req: Request, res: Response) => {
     return ApiResponse.ok(res, "Questions", result);
 };
 
+export const copyQuestionsFromExam = async (req: Request, res: Response) => {
+    const result = await assignmentService.copyQuestionsFromExam(req.params.id as string, req.body.examId, req.user!.id);
+    return ApiResponse.ok(res, "Questions copied into the assignment", result);
+};
+
 export const getMyAssignments = async (req: Request, res: Response) => {
     const result = await assignmentService.getMyAssignments(req.user!.id);
     return ApiResponse.ok(res, "Your assignments", result);

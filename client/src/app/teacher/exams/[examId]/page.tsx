@@ -19,6 +19,7 @@ import {
   suggestTitleFromSections,
   publishProblem,
   examDetailsPayload,
+  AiEvaluationToggle,
 } from "../new/ExamDetailsForm";
 import { WorkspaceShell, CreationMode } from "../new/workspace";
 import QuestionReviewChat from "@/components/QuestionReviewChat";
@@ -59,6 +60,9 @@ export default function EditExamBuilder() {
 
   const [details, setDetails] = useState<ExamDetails>(EMPTY_EXAM_DETAILS);
   const [isPublished, setIsPublished] = useState(false);
+  // Made from past papers: those questions are kept exactly as printed, so there is no "Review with AI".
+  const [fromPapers, setFromPapers] = useState(false);
+  const [aiEvaluation, setAiEvaluation] = useState(true);
   const [joinCode, setJoinCode] = useState("");
   const [publishTime, setPublishTime] = useState("");
   const [sections, setSections] = useState<any[]>([]);
@@ -91,9 +95,10 @@ export default function EditExamBuilder() {
           startTime: toDatetimeLocal(data.startTime),
           endTime: toDatetimeLocal(data.endTime),
           instructions: data.instructions?.length > 0 ? data.instructions : [""],
-          requireFeedback: !!data.requireFeedback,
         });
         setIsPublished(data.status === "PUBLISHED");
+        setFromPapers((data.sourceDocumentIds ?? []).length > 0);
+        setAiEvaluation(data.aiEvaluation !== false);
         if (data.joinCode) setJoinCode(data.joinCode);
         setPublishTime(toDatetimeLocal(data.publishTime));
       })
@@ -136,6 +141,7 @@ export default function EditExamBuilder() {
     setIsSaving(true);
     try {
       await updateExamService(examId, {
+        aiEvaluation,
         ...examDetailsPayload(details),
         publishTime: publishTime ? new Date(publishTime).toISOString() : null,
         ...(status ? { status } : {}),
@@ -237,7 +243,7 @@ export default function EditExamBuilder() {
             <QuestionReviewChat examId={examId} onSectionsChange={setSections} />
           ) : (
             <div className="space-y-6">
-              {questionCount > 0 && !isAiMode && (
+              {questionCount > 0 && !isAiMode && !fromPapers && (
                 <div className="flex justify-end">
                   <Button onClick={() => setShowReview(true)} className="h-10 gap-2 rounded-full bg-orange-600 px-5 text-sm font-semibold text-white hover:bg-orange-700">
                     <Sparkles className="h-4 w-4" /> Review with AI
@@ -273,16 +279,19 @@ export default function EditExamBuilder() {
         left={
           <div className="space-y-10">
             {joinCode && (
-              <p className="text-xs text-gray-400">
-                Join code <span className="font-mono font-semibold text-white">{joinCode}</span>
+              <p className="flex items-center gap-2 text-xs text-gray-300">
+                Join code <span className="rounded-md bg-orange-500/15 px-2 py-0.5 font-mono text-sm font-bold tracking-wider text-orange-300">{joinCode}</span>
               </p>
             )}
 
             {/* Exam summary: a small table with each section's questions and marks, then the totals. */}
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-gray-300">Exam summary</h3>
-              <div className="divide-y divide-white/5 text-sm">
-                <div className="grid grid-cols-[1fr_4.5rem_3.5rem] items-center gap-2 pb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+              <h3 className="flex items-center gap-2 text-base font-bold text-white">
+                <span aria-hidden className="h-4 w-1 shrink-0 rounded-full bg-orange-500" />
+                Exam summary
+              </h3>
+              <div className="divide-y divide-white/10 text-sm">
+                <div className="grid grid-cols-[1fr_4.5rem_3.5rem] items-center gap-2 pb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
                   <span>Section</span>
                   <span className="text-right">Questions</span>
                   <span className="text-right">Marks</span>
@@ -291,21 +300,30 @@ export default function EditExamBuilder() {
                   const n = s.questions?.length || 0;
                   const marks = (s.questions || []).reduce((m: number, q: any) => m + (Number(q.marks) || 0), 0);
                   return (
-                    <div key={s.id ?? s._id ?? i} className="grid grid-cols-[1fr_4.5rem_3.5rem] items-center gap-2 py-2 text-gray-300">
-                      <span className="min-w-0 truncate">{s.title || `Section ${i + 1}`}</span>
+                    <div key={s.id ?? s._id ?? i} className="grid grid-cols-[1fr_4.5rem_3.5rem] items-center gap-2 py-2.5 text-gray-100">
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-orange-500/15 text-[11px] font-bold text-orange-300">
+                          {i < 26 ? String.fromCharCode(65 + i) : i + 1}
+                        </span>
+                        <span className="truncate">{s.title || `Section ${i + 1}`}</span>
+                      </span>
                       <span className="text-right tabular-nums">{n}</span>
                       <span className="text-right tabular-nums">{marks}</span>
                     </div>
                   );
                 })}
-                <div className="grid grid-cols-[1fr_4.5rem_3.5rem] items-center gap-2 py-2 font-semibold text-white">
+                <div className="grid grid-cols-[1fr_4.5rem_3.5rem] items-center gap-2 py-2.5 font-bold text-white">
                   <span>Total</span>
-                  <span className="text-right tabular-nums">{questionCount}</span>
-                  <span className="text-right tabular-nums">{totalMarks}</span>
+                  <span className="text-right tabular-nums text-purple-300">{questionCount}</span>
+                  <span className="text-right tabular-nums text-emerald-400">{totalMarks}</span>
                 </div>
               </div>
             </div>
 
+            {/* Only for exams with written questions: MCQs are always marked automatically. */}
+            {sections.some((sec: any) => (sec.questions || []).some((q: any) => q.type === "descriptive")) && (
+              <AiEvaluationToggle value={aiEvaluation} onChange={setAiEvaluation} />
+            )}
             <ExamDetailsForm values={details} onChange={(patch) => setDetails((prev) => ({ ...prev, ...patch }))} />
             <div className="space-y-2">
               <label className="text-sm font-semibold text-gray-300">Publish Date & Time</label>

@@ -16,7 +16,7 @@ import { ContentBlocksView, OptionValue, MarkdownCode } from "@/components/Quest
 import { MATH_REMARK_PLUGINS, MATH_REHYPE_PLUGINS } from "@/lib/markdownMath";
 
 import { TopicsPanel } from "./TopicsPanel";
-import { ModePicker, type CreationMode } from "./workspace";
+import { ModePicker, WizardNavButtons, useWizardNav, type CreationMode } from "./workspace";
 import { BlueprintTreeViewer } from "@/components/BlueprintTreeViewer";
 import BlueprintRefinementChat from "@/components/BlueprintRefinementChat";
 import QuestionReviewChat from "@/components/QuestionReviewChat";
@@ -248,6 +248,7 @@ export function QuestionBuilder({
                 key={section._id || section.id}
                 examId={examId}
                 canEditTopics={examDetail?.status !== "PUBLISHED"}
+                sourceDocumentIds={examDetail?.sourceDocumentIds ?? []}
                 section={section}
                 index={idx}
                 refresh={fetchSections}
@@ -329,7 +330,7 @@ export function QuestionBuilder({
 // -------------------------------------------------------------
 // SECTION COMPONENT
 // -------------------------------------------------------------
-function SectionItem({ examId, canEditTopics, section, index, refresh, onOpenEditor, onOpenAiForSection }: { examId: string, canEditTopics: boolean, section: any, index: number, refresh: () => void, onOpenEditor: (q: any) => void, onOpenAiForSection?: (secId: string) => void }) {
+function SectionItem({ examId, canEditTopics, sourceDocumentIds, section, index, refresh, onOpenEditor, onOpenAiForSection }: { examId: string, canEditTopics: boolean, sourceDocumentIds: string[], section: any, index: number, refresh: () => void, onOpenEditor: (q: any) => void, onOpenAiForSection?: (secId: string) => void }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [title, setTitle] = useState(section.title || "");
@@ -437,7 +438,7 @@ function SectionItem({ examId, canEditTopics, section, index, refresh, onOpenEdi
 
       {isExpanded && (
         <CardContent className="p-2 sm:p-6 space-y-3 sm:space-y-4 animate-in slide-in-from-top-2 fade-in duration-200">
-          <TopicsPanel examId={examId} section={section} canEdit={canEditTopics} refresh={refresh} />
+          <TopicsPanel examId={examId} section={section} canEdit={canEditTopics} refresh={refresh} sourceDocumentIds={sourceDocumentIds} />
           {(section.questions || []).map((q: any, qIdx: number) => (
             <QuestionItem key={q._id || q.id} question={q} index={qIdx} refresh={refresh} onEdit={() => onOpenEditor(q)} />
           ))}
@@ -513,7 +514,7 @@ function QuestionItem({ question, index, refresh, onEdit }: { question: any, ind
             components={{
                 pre: ({ children }) => {
                   return (
-                    <div className="my-5 rounded-xl overflow-hidden border border-white/10 bg-[#09090b] shadow-2xl">
+                    <div className="my-5 rounded-xl overflow-hidden border border-white/10 bg-[#09090b] keep-dark shadow-2xl">
                       <div className="p-5 overflow-x-auto custom-scrollbar font-normal">
                         {children}
                       </div>
@@ -913,6 +914,8 @@ export function AiExamGeneratorForm({
   // "From Source" mode: questions are planned from and written using this book.
   sourceBook?: { id: string; title: string; toc: BookToc } | null;
 }) {
+  // Inside the new-exam wizard, Previous is at the top of the page and Back (leave the exam) is in the footer.
+  const wizardNav = useWizardNav();
   const [isGenerating, setIsGenerating] = useState(false);
   const [genPhase, setGenPhase] = useState<"blueprint" | "questions">("blueprint");
   const [genProgress, setGenProgress] = useState<{ done: number; total: number; message?: string } | null>(null);
@@ -1460,7 +1463,9 @@ export function AiExamGeneratorForm({
     />
   ) : null;
 
-  const refineActions = (
+  const refineActions = wizardNav ? (
+    <WizardNavButtons onPrevious={() => setShowRefine(false)} />
+  ) : (
     <Button
       variant="ghost"
       onClick={() => setShowRefine(false)}
@@ -1472,13 +1477,17 @@ export function AiExamGeneratorForm({
 
   const blueprintActions = (
     <>
-      <Button
-        variant="ghost"
-        onClick={() => setAiStage("config")}
-        className="text-gray-400 hover:text-white h-10 px-2 sm:px-5 text-sm font-semibold flex items-center gap-1.5"
-      >
-        <ArrowLeft className="h-4 w-4" /> {renderShell ? "Back to Topics" : "Edit Exam Settings"}
-      </Button>
+      {wizardNav ? (
+        <WizardNavButtons onPrevious={() => setAiStage("config")} />
+      ) : (
+        <Button
+          variant="ghost"
+          onClick={() => setAiStage("config")}
+          className="text-gray-400 hover:text-white h-10 px-2 sm:px-5 text-sm font-semibold flex items-center gap-1.5"
+        >
+          <ArrowLeft className="h-4 w-4" /> {renderShell ? "Back to Topics" : "Edit Exam Settings"}
+        </Button>
+      )}
 
       <Button
         onClick={handleVerifyAndProceed}
@@ -1524,22 +1533,30 @@ export function AiExamGeneratorForm({
 
   const configActions = (
     <>
-      <Button variant="ghost" onClick={onBack} className="text-gray-400 hover:text-white h-10 px-5 text-sm font-semibold flex items-center gap-1.5">
-        <ArrowLeft className="h-4 w-4" /> {renderShell ? "Previous" : "Cancel"}
-      </Button>
+      {wizardNav ? (
+        <WizardNavButtons onPrevious={onBack} />
+      ) : (
+        <Button variant="ghost" onClick={onBack} className="text-gray-400 hover:text-white h-10 px-5 text-sm font-semibold flex items-center gap-1.5">
+          <ArrowLeft className="h-4 w-4" /> {renderShell ? "Previous" : "Cancel"}
+        </Button>
+      )}
       <Button onClick={startIntentConversation} className="bg-purple-600 hover:bg-purple-700 text-white h-11 px-8 font-bold text-sm shadow-xl shadow-purple-950/40 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]">
         Next <ArrowRight className="h-4 w-4 ml-2" />
       </Button>
     </>
   );
 
-  const intentActions = (
+  const goBackToConfig = () => {
+    intentVoice.stop();
+    setAiStage("config");
+  };
+
+  const intentActions = wizardNav ? (
+    <WizardNavButtons onPrevious={goBackToConfig} />
+  ) : (
     <Button
       variant="ghost"
-      onClick={() => {
-        intentVoice.stop();
-        setAiStage("config");
-      }}
+      onClick={goBackToConfig}
       className="text-gray-400 hover:text-white h-10 px-5 text-sm font-semibold flex items-center gap-1.5"
     >
       <ArrowLeft className="h-4 w-4" /> {renderShell ? "Back to Topics" : "Cancel"}

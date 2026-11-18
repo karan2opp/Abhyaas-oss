@@ -20,7 +20,7 @@ When needsCleanup is true, "cleanedText" must be IDENTICAL to the original excep
 
 For each question you are given, also return:
 - "subject": the single subject it belongs to (e.g. "Physics", "Mathematics").
-- "topics": one or more specific topics/concepts the question tests (e.g. ["Newton's Laws", "Friction"]). A question can genuinely span more than one topic — include all that apply, but do not pad the list with tenuous ones.
+- "topics": the specific subtopics the question tests, MOST CENTRAL FIRST, at most two (e.g. ["Friction", "Newton's second law"]). Name each the way a syllabus would, short and specific, not a whole chapter ("Binary search", not "Algorithms"). A question can genuinely span more than one subtopic — add a second only when the question really tests it, never a tenuous one; most questions have exactly one.
 - "description": one or two plain-English sentences describing what the question is actually asking/testing. This is what gets embedded for semantic search, so make it concrete and specific rather than generic — mention the concept, the type of problem, and any numbers/context that matter. If the question references a table or figure, say so explicitly (e.g. "...using the data in the accompanying table" / "...based on the diagram provided").
 
 SPLITTING THE QUESTION FROM ITS OPTIONS
@@ -29,7 +29,13 @@ Exam papers print structural markers around the actual content: the question num
 
 - "questionStem": the question itself, copied verbatim, with the option lines and any answer line removed. Everything that is part of the question — including any "Choose the correct option" style instruction that belongs to it — stays. Do not reword, reorder, summarize, or complete it.
 - "options": one entry per printed choice, IN THE ORDER PRINTED. "label" is the marker with its brackets/punctuation stripped ("A", "b", "iii"). "text" is the choice itself, copied CHARACTER FOR CHARACTER from the question with only the label marker removed.
-- "correctOption": the label the paper states as the answer, if and only if the paper prints one. If it does not, return null. NEVER work out the answer yourself — a wrong key is far worse than no key.
+- "correctOption" and "answerFrom", for a multiple-choice question:
+  - If the paper prints the answer with this question ("Answer: C", "Ans. (b)"), give that label and answerFrom "printed".
+  - Otherwise, if "answerKnown" is true, the answer is already known from the paper's answer key: return null and answerFrom "none". Do not work it out.
+  - Otherwise, no answer is given anywhere: work the question out carefully yourself, give the label of the correct option and answerFrom "solved".
+  For a question that is not multiple-choice: null and "none".
+
+Program code in a question is given between \`\`\` lines. It is part of the question: keep it in "questionStem", where it is printed, together with its \`\`\` lines, and never treat its spacing or indentation as a defect.
 
 The option text is CONTENT, not a marker — never drop it, shorten it, or tidy it. Only the label marker itself is removed. If the question is not multiple-choice, return an empty "options" array and put the whole question in "questionStem".
 

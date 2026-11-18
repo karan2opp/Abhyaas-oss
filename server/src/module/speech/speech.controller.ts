@@ -15,7 +15,7 @@ export const transcribeHandler = async (req: Request, res: Response, next: NextF
         if (!req.file) throw ApiError.badRequest("A recording is required (field name: audio)");
         if (!ALLOWED_TYPE.test(req.file.mimetype)) throw ApiError.badRequest("Unsupported audio format");
 
-        const client = await getClientForModel(env.TRANSCRIPTION_MODEL);
+        const client = await getClientForModel(env.TRANSCRIPTION_MODEL, "transcription");
         const file = await toFile(req.file.buffer, `speech.${extensionFor(req.file.mimetype)}`, { type: req.file.mimetype });
         const result = await client.audio.transcriptions.create({ file, model: env.TRANSCRIPTION_MODEL });
 

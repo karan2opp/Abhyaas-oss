@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { inngest } from "../../../common/inngest/client.js";
 import db from "../../../common/db/index.js";
 import { books } from "../book.schema.js";
-import { bindAiUser } from "../../../common/agent/ai_context.js";
+import { bindAiUser, runAsAiUser } from "../../../common/agent/ai_context.js";
+import { withUsageSteps } from "../../../common/agent/usage_context.js";
 import { toAiKeyApiError } from "../../ai_keys/ai_key.service.js";
 import { BookInputError, extractAndStoreBlocks, indexBookWindow, mergeAndSaveIndex } from "../book_pipeline.js";
 import { markBookFailed } from "../book.service.js";
@@ -33,7 +34,11 @@ export const indexBookFunction = inngest.createFunction(
         const bookId = event.data.bookId as string;
         // Indexing a book uses AI, billed to the teacher who uploaded it, with their own key.
         const [book] = await db.select({ createdBy: books.createdBy }).from(books).where(eq(books.id, bookId));
-        if (book?.createdBy) bindAiUser(book.createdBy);
+        if (book?.createdBy) {
+            const ownerId = book.createdBy;
+            bindAiUser(ownerId);
+            step = withUsageSteps(step, {}, (fn) => runAsAiUser(ownerId, fn));
+        }
 
         try {
             const plan = await step.run("extract-blocks", async () => {

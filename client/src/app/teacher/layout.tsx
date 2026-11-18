@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, LogOut, ChevronsLeft, ChevronsRight, Menu, X, BookOpen, User, FileText, ClipboardList, KeyRound } from "lucide-react";
+import { LayoutDashboard, LogOut, ChevronsLeft, ChevronsRight, Menu, X, BookOpen, User, FileText, ClipboardList, KeyRound, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { useAuthStore } from "@/store/authStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { RoleSwitch } from "@/components/RoleSwitch";
@@ -17,6 +18,7 @@ const sidebarLinks = [
   { name: "Exams", href: "/teacher/exams", icon: FileText },
   { name: "Assignments", href: "/teacher/assignments", icon: ClipboardList },
   { name: "AI Key", href: "/teacher/ai-key", icon: KeyRound },
+  { name: "AI usage", href: "/teacher/ai-usage", icon: Activity },
   { name: "Profile", href: "/teacher/profile", icon: User },
 ];
 
@@ -57,9 +59,12 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               </div>
               <span className="font-bold text-lg text-white tracking-tight">Abhyas</span>
             </div>
-            <button onClick={() => setIsMobileOpen(true)} className="p-2 -mr-2 text-gray-400 hover:text-white">
-              <Menu className="h-6 w-6" />
-            </button>
+            <div className="flex items-center gap-1">
+              <ThemeSwitch />
+              <button onClick={() => setIsMobileOpen(true)} className="p-2 -mr-2 text-gray-400 hover:text-white">
+                <Menu className="h-6 w-6" />
+              </button>
+            </div>
           </div>
 
         {/* Mobile Overlay */}
@@ -156,6 +161,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 </div>
               )}
             </div>
+
+            <ThemeSwitch label={!isCollapsed} className={cn("w-full", isCollapsed ? "justify-center" : "justify-start px-3")} />
 
             <button 
               onClick={async () => {

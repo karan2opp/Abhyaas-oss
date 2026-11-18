@@ -1,9 +1,9 @@
-import { eq, inArray, desc, and } from "drizzle-orm";
+import { eq, inArray, desc, and, lte } from "drizzle-orm";
 import db from "../../common/db/index.js";
-import { questionBankDocuments, questionBankChunks, type NewQuestionBankChunk } from "./question_bank.schema.js";
+import { questionBankDocuments, questionBankChunks, type NewQuestionBankChunk, type QuestionBankTopicTree } from "./question_bank.schema.js";
 import { getClientForModel } from "../../common/agent/openai.client.js";
 import { env } from "../../env.js";
-import { searchQuestionBankPoints, type QuestionBankAccess } from "./qdrant_client.js";
+import { deleteQuestionBankPointsByDocument, searchQuestionBankPoints, type QuestionBankAccess } from "./qdrant_client.js";
 
 export async function createDocument(input: {
     title: string;
@@ -51,11 +51,27 @@ export function canAccessDocument(document: { createdBy: string }, access: Quest
 }
 
 export async function markDocumentProcessing(id: string) {
-    await db.update(questionBankDocuments).set({ status: "processing", updatedAt: new Date() }).where(eq(questionBankDocuments.id, id));
+    await db.update(questionBankDocuments).set({ status: "processing", progress: 0, progressLabel: "Starting", updatedAt: new Date() }).where(eq(questionBankDocuments.id, id));
+}
+
+/**
+ * Records how far processing has got. Parts of the pipeline run side by side and report out of order, so a value
+ * lower than the one already saved is ignored: the bar never jumps backwards.
+ */
+export async function setDocumentProgress(id: string, percent: number, label: string) {
+    const value = Math.max(0, Math.min(99, Math.round(percent)));
+    await db
+        .update(questionBankDocuments)
+        .set({ progress: value, progressLabel: label })
+        .where(and(eq(questionBankDocuments.id, id), lte(questionBankDocuments.progress, value)));
 }
 
 export async function markDocumentCompleted(id: string, totalChunks: number) {
-    await db.update(questionBankDocuments).set({ status: "completed", totalChunks, updatedAt: new Date() }).where(eq(questionBankDocuments.id, id));
+    await db.update(questionBankDocuments).set({ status: "completed", totalChunks, progress: 100, progressLabel: null, updatedAt: new Date() }).where(eq(questionBankDocuments.id, id));
+}
+
+export async function setDocumentTopicTree(id: string, topicTree: QuestionBankTopicTree) {
+    await db.update(questionBankDocuments).set({ topicTree, updatedAt: new Date() }).where(eq(questionBankDocuments.id, id));
 }
 
 export async function markDocumentFailed(id: string, error: string) {
@@ -82,6 +98,15 @@ export async function deleteDocument(id: string) {
     await db.delete(questionBankDocuments).where(eq(questionBankDocuments.id, id));
 }
 
+/**
+ * Removes every saved question of a document, from Postgres and from the search index. Run at the start of saving, so
+ * a retried save replaces the questions instead of storing a second copy of each.
+ */
+export async function deleteChunksByDocument(documentId: string) {
+    await deleteQuestionBankPointsByDocument(documentId);
+    await db.delete(questionBankChunks).where(eq(questionBankChunks.documentId, documentId));
+}
+
 export async function saveChunk(chunk: NewQuestionBankChunk) {
     const [row] = await db.insert(questionBankChunks).values(chunk).returning();
     return row!;
@@ -93,7 +118,7 @@ export async function saveChunk(chunk: NewQuestionBankChunk) {
  * question text directly, since the description is the searchable gloss.
  */
 export async function embedText(text: string): Promise<number[]> {
-    const client = await getClientForModel(env.EMBEDDING_MODEL);
+    const client = await getClientForModel(env.EMBEDDING_MODEL, "embedding");
     const response = await client.embeddings.create({ model: env.EMBEDDING_MODEL, input: text });
     const embedding = response.data[0]?.embedding;
     if (!embedding) throw new Error("Embedding response contained no vector");

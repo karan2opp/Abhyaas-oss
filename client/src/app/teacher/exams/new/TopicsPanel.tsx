@@ -9,8 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { listPaperTopics, listQuestionBankDocuments } from "@/services/questionBank.service";
-import { addTopicService, removeTopicService } from "@/app/teacher/exams/exam.service";
+import { remainingBySubtopic } from "@/lib/pyqMatching";
+import { getPaperTopicTree, listPaperTopics, listQuestionBankDocuments, type PaperTopicTree, type QuestionType } from "@/services/questionBank.service";
+import { SubtopicRow } from "./SubtopicRow";
+import { addPaperTopicsService, addTopicService, removeTopicService } from "@/app/teacher/exams/exam.service";
 
 const DIFFICULTY_ITEMS = [
   { value: "easy", label: "Easy" },
@@ -19,6 +21,15 @@ const DIFFICULTY_ITEMS = [
 ];
 
 type TopicRow = { topic: string; count: number; edited: number; subtopics: string[] };
+// A subtopic of one of the exam's papers and how many of its questions to take.
+type PaperPick = { documentId: string; key: string; name: string; count: number };
+type PaperSource = { documentId: string; title: string; tree: PaperTopicTree | null };
+
+const tickBox = (on: boolean) => (
+  <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border", on ? "border-orange-500 bg-orange-500 text-black" : "border-white/25")}>
+    {on && <Check className="h-3 w-3" />}
+  </span>
+);
 
 // A question counts as edited when it was changed after it was created (generation saves a whole batch within a moment).
 const wasEdited = (q: any) => new Date(q.updatedAt).getTime() - new Date(q.createdAt).getTime() > 5000;
@@ -54,11 +65,6 @@ function TopicSearchDialog({
   const isOn = (topic: string) => selected.some((s) => s.trim().toLowerCase() === topic.trim().toLowerCase());
 
   const rowClass = "flex w-full items-center gap-3 px-1 py-3 text-left transition-colors hover:bg-white/5";
-  const box = (on: boolean) => (
-    <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border", on ? "border-orange-500 bg-orange-500 text-black" : "border-white/25")}>
-      {on && <Check className="h-3 w-3" />}
-    </span>
-  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -83,7 +89,7 @@ function TopicSearchDialog({
               {canUseTyped && (
                 <li>
                   <button type="button" onClick={() => onToggle(typed)} className={rowClass}>
-                    {box(isOn(typed))}
+                    {tickBox(isOn(typed))}
                     <span className="min-w-0 flex-1 truncate text-sm text-white">Use &quot;{typed}&quot;</span>
                     <span className="shrink-0 text-[11px] text-gray-500">Your own topic</span>
                   </button>
@@ -92,7 +98,7 @@ function TopicSearchDialog({
               {shown.map((t) => (
                 <li key={t.topic}>
                   <button type="button" onClick={() => onToggle(t.topic)} className={rowClass}>
-                    {box(isOn(t.topic))}
+                    {tickBox(isOn(t.topic))}
                     <span className="min-w-0 flex-1 truncate text-sm text-white">{t.topic}</span>
                     <span className="shrink-0 text-[11px] text-gray-500">{t.available} question{t.available === 1 ? "" : "s"}</span>
                   </button>
@@ -116,11 +122,143 @@ function TopicSearchDialog({
 }
 
 /**
+ * The topics of the past papers an exam was made from, broad topic -> subtopic, with how many questions of the chosen
+ * type each can still give: questions already in the exam are left out, and so are those the other picks here need.
+ * The teacher sets how many to take from each subtopic.
+ */
+function PaperTopicDialog({
+  open,
+  onOpenChange,
+  papers,
+  loading,
+  selected,
+  onCount,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  papers: PaperSource[];
+  loading: boolean;
+  selected: PaperPick[];
+  onCount: (pick: PaperPick) => void;
+}) {
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+
+  const search = query.trim().toLowerCase();
+  const countOf = (documentId: string, key: string) => selected.find((p) => p.documentId === documentId && p.key === key)?.count ?? 0;
+  // How many more each subtopic of each paper can give, after every pick made here.
+  const remaining = useMemo(() => {
+    const out: Record<string, Record<string, number>> = {};
+    for (const paper of papers) {
+      if (!paper.tree) continue;
+      const picked: Record<string, number> = {};
+      for (const p of selected) if (p.documentId === paper.documentId) picked[p.key] = p.count;
+      out[paper.documentId] = remainingBySubtopic(paper.tree.questions, picked);
+    }
+    return out;
+  }, [papers, selected]);
+  const totalPicked = selected.reduce((n, p) => n + p.count, 0);
+  // A search matching a broad topic keeps all its subtopics; otherwise only the subtopics that match.
+  const shown = papers.map((paper) => ({
+    ...paper,
+    broadTopics: (paper.tree?.broadTopics ?? [])
+      .map((broad) => ({
+        ...broad,
+        subtopics: !search || broad.name.toLowerCase().includes(search) ? broad.subtopics : broad.subtopics.filter((sub) => sub.name.toLowerCase().includes(search)),
+      }))
+      .filter((broad) => broad.subtopics.length > 0),
+  }));
+  const nothing = shown.every((paper) => paper.broadTopics.length === 0);
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[85vh] flex-col gap-4">
+        <DialogHeader>
+          <DialogTitle>Choose topics</DialogTitle>
+          <DialogDescription>Topics in the papers this exam was made from. Choose how many questions to take from each subtopic.</DialogDescription>
+        </DialogHeader>
+
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search topics" autoFocus className="pl-6 text-white placeholder:text-zinc-500" />
+        </div>
+
+        <div className="custom-scrollbar -mx-1 min-h-0 flex-1 overflow-y-auto pr-1">
+          {loading ? (
+            <div className="flex items-center gap-2 px-1 py-3 text-xs text-gray-400">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Reading the topics in this exam&apos;s papers...
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {shown.map((paper) =>
+                paper.broadTopics.length === 0 ? null : (
+                  <section key={paper.documentId}>
+                    {papers.length > 1 && <p className="mb-1 truncate px-1 text-[11px] font-bold uppercase tracking-wider text-gray-500">{paper.title}</p>}
+                    <ul className="divide-y divide-white/5">
+                      {paper.broadTopics.map((broad) => (
+                        <li key={broad.name} className="py-2.5">
+                          <p className="truncate px-1 text-sm font-semibold text-white">{broad.name}</p>
+                          <p className="px-1 text-[11px] text-gray-500">
+                            {broad.total} available · {plural(broad.subtopics.length, "subtopic")}
+                          </p>
+                          <ul className="ml-2 mt-1 divide-y divide-white/5 border-l border-white/15 pl-3">
+                            {broad.subtopics.map((sub) => (
+                              <SubtopicRow
+                                key={sub.key}
+                                name={sub.name}
+                                count={countOf(paper.documentId, sub.key)}
+                                remaining={remaining[paper.documentId]?.[sub.key] ?? 0}
+                                inExam={sub.inExam ?? 0}
+                                onCount={(n) => onCount({ documentId: paper.documentId, key: sub.key, name: sub.name, count: n })}
+                              />
+                            ))}
+                          </ul>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )
+              )}
+            </div>
+          )}
+          {!loading && nothing && (
+            <p className="px-1 py-3 text-xs italic text-gray-500">{search ? "No topics match your search." : "This exam's papers have no questions of this type."}</p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button type="button" onClick={() => onOpenChange(false)} className="bg-orange-600 font-semibold text-white hover:bg-orange-700">
+            Done{totalPicked > 0 ? ` (${plural(totalPicked, "question")})` : ""}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
  * The topics an exam section covers, read from the tag on each question. Teachers can remove a topic (its questions
  * are deleted) or add a new one (AI plans its subtopics and writes the questions). Existing topics are never edited
  * in place. Questions without a tag (written by hand, or from before topics were tracked) simply don't appear here.
+ * For an exam made from past papers (`sourceDocumentIds`), a topic is added from those papers instead: real questions,
+ * no AI.
  */
-export function TopicsPanel({ examId, section, canEdit, refresh }: { examId: string; section: any; canEdit: boolean; refresh: () => void }) {
+export function TopicsPanel({
+  examId,
+  section,
+  canEdit,
+  refresh,
+  sourceDocumentIds = [],
+}: {
+  examId: string;
+  section: any;
+  canEdit: boolean;
+  refresh: () => void;
+  sourceDocumentIds?: string[];
+}) {
   const sectionId = section._id || section.id;
   const groups: any[] = section.blocks || [];
 
@@ -135,6 +273,21 @@ export function TopicsPanel({ examId, section, canEdit, refresh }: { examId: str
   const [topicPickerOpen, setTopicPickerOpen] = useState(false);
   const [paperTopics, setPaperTopics] = useState<{ topic: string; available: number }[] | null>(null);
   const [loadingTopics, setLoadingTopics] = useState(false);
+  const fromPapers = sourceDocumentIds.length > 0;
+  // The exam's papers with their topic trees, for one question type, counted against the exam's current questions.
+  const [paperSources, setPaperSources] = useState<{ type: QuestionType; papers: PaperSource[] } | null>(null);
+  const [paperPicks, setPaperPicks] = useState<PaperPick[]>([]);
+  // Questions from the papers go into the group of their own topic. The type is asked only when the section has both
+  // MCQ and written groups (or none yet).
+  const sectionTypes = [...new Set(groups.map((g) => (g.questionType === "descriptive" ? "descriptive" : "mcq")))] as QuestionType[];
+  const askPaperType = sectionTypes.length !== 1;
+  const [chosenPaperType, setChosenPaperType] = useState<QuestionType>("mcq");
+  const paperType: QuestionType = askPaperType ? chosenPaperType : sectionTypes[0]!;
+
+  // The counts depend on what is already in the exam, so they are read again after its questions change.
+  useEffect(() => {
+    setPaperSources(null);
+  }, [section.questions]);
 
   const rows = useMemo<TopicRow[]>(() => {
     const byTopic = new Map<string, TopicRow>();
@@ -149,9 +302,33 @@ export function TopicsPanel({ examId, section, canEdit, refresh }: { examId: str
     return [...byTopic.values()];
   }, [section.questions]);
 
+  // The exam's own papers, read for the question type of the group being added to.
+  const loadPaperSources = async (type: QuestionType) => {
+    if (paperSources?.type === type || loadingTopics) return;
+    setLoadingTopics(true);
+    try {
+      const documents = await listQuestionBankDocuments();
+      const titles = new Map(documents.map((d) => [d.id, d.title]));
+      const papers = await Promise.all(
+        sourceDocumentIds.map(async (documentId) => ({
+          documentId,
+          title: titles.get(documentId) ?? "Paper",
+          // A paper that was deleted since is simply left out.
+          tree: await getPaperTopicTree(documentId, type, examId).catch(() => null),
+        }))
+      );
+      setPaperSources({ type, papers });
+    } catch {
+      setPaperSources({ type, papers: [] });
+    } finally {
+      setLoadingTopics(false);
+    }
+  };
+
   // The topics in the teacher's papers are only fetched the first time the picker is opened.
   const openTopicPicker = async () => {
     setTopicPickerOpen(true);
+    if (fromPapers) return loadPaperSources(paperType);
     if (paperTopics !== null || loadingTopics) return;
     setLoadingTopics(true);
     try {
@@ -177,7 +354,50 @@ export function TopicsPanel({ examId, section, canEdit, refresh }: { examId: str
   const toggleNewTopic = (name: string) =>
     setNewTopics((prev) => (prev.some((t) => t.trim().toLowerCase() === name.trim().toLowerCase()) ? prev.filter((t) => t.trim().toLowerCase() !== name.trim().toLowerCase()) : [...prev, name.trim()]));
 
+  // Sets how many questions to take from one subtopic; 0 drops it.
+  const setPaperCount = (pick: PaperPick) =>
+    setPaperPicks((prev) => {
+      const others = prev.filter((p) => !(p.documentId === pick.documentId && p.key === pick.key));
+      if (pick.count <= 0) return others;
+      const at = prev.findIndex((p) => p.documentId === pick.documentId && p.key === pick.key);
+      return at === -1 ? [...prev, pick] : prev.map((p, i) => (i === at ? pick : p));
+    });
+
+  const changePaperType = (type: QuestionType) => {
+    if (type === chosenPaperType) return;
+    setChosenPaperType(type);
+    setPaperPicks([]);
+  };
+
+  const handleAddFromPapers = async () => {
+    const total = paperPicks.reduce((n, p) => n + p.count, 0);
+    if (total === 0) return toast.error("Choose at least one topic");
+    if (total > 50) return toast.error("At most 50 questions can be added at once");
+    setBusy("add");
+    try {
+      const res = await addPaperTopicsService(examId, {
+        sectionId,
+        ...(askPaperType ? { questionType: paperType } : {}),
+        picks: paperPicks.map((p) => ({ documentId: p.documentId, subtopic: p.key, count: p.count })),
+      });
+      const added: number = res?.data?.added ?? 0;
+      const shortfalls: { subtopic: string; requested: number; found: number }[] = res?.data?.shortfalls ?? [];
+      toast.success(`Added ${added} question${added === 1 ? "" : "s"} from the papers`);
+      if (shortfalls.length > 0) {
+        toast.warning(`Not enough questions left in the papers: ${shortfalls.map((f) => `${f.subtopic} ${f.found} of ${f.requested}`).join(", ")}.`, { duration: 8000 });
+      }
+      setPaperPicks([]);
+      setIsAdding(false);
+      refresh();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || "Failed to add questions");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const handleAdd = async () => {
+    if (fromPapers) return handleAddFromPapers();
     const n = Number(count);
     if (newTopics.length === 0) return toast.error("Choose at least one topic");
     if (!Number.isInteger(n) || n < 1 || n > 15) return toast.error("Number of questions must be between 1 and 15");
@@ -206,6 +426,10 @@ export function TopicsPanel({ examId, section, canEdit, refresh }: { examId: str
       if (added > 0) refresh();
     }
   };
+
+  const chips = fromPapers
+    ? paperPicks.map((p) => ({ id: `${p.documentId}:${p.key}`, label: `${p.name} × ${p.count}`, remove: () => setPaperCount({ ...p, count: 0 }) }))
+    : newTopics.map((t) => ({ id: t, label: t, remove: () => toggleNewTopic(t) }));
 
   const handleRemove = async (row: TopicRow) => {
     const editedNote = row.edited > 0 ? ` ${row.edited} of them ${row.edited === 1 ? "has" : "have"} been edited by you.` : "";
@@ -256,7 +480,11 @@ export function TopicsPanel({ examId, section, canEdit, refresh }: { examId: str
           ))}
         </ul>
       ) : (
-        !isAdding && <p className="text-xs text-gray-500">No topics yet. Add one and the AI will plan its subtopics and write the questions.</p>
+        !isAdding && (
+          <p className="text-xs text-gray-500">
+            {fromPapers ? "No topics yet. Add one to take more questions from this exam's papers." : "No topics yet. Add one and the AI will plan its subtopics and write the questions."}
+          </p>
+        )
       )}
 
       {isAdding && (
@@ -269,19 +497,19 @@ export function TopicsPanel({ examId, section, canEdit, refresh }: { examId: str
               disabled={busy === "add"}
               className="flex h-11 w-full items-center justify-between gap-1.5 border-b border-white/20 py-2 pr-1 text-left text-sm transition-colors hover:border-orange-500 focus-visible:border-orange-500 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <span className="truncate text-zinc-500">{newTopics.length === 0 ? "Select or search topics" : "Add more topics"}</span>
+              <span className="truncate text-zinc-500">{(fromPapers ? paperPicks.length : newTopics.length) === 0 ? "Select or search topics" : "Add more topics"}</span>
               <ChevronDown className="size-4 shrink-0 text-orange-400" />
             </button>
-            {newTopics.length > 0 && (
+            {chips.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-1">
-                {newTopics.map((t) => (
-                  <span key={t} className="inline-flex max-w-full items-center gap-1 rounded-full border border-orange-500/40 bg-orange-500/10 py-1 pl-3 pr-1.5 text-xs text-orange-200">
-                    <span className="truncate">{t}</span>
+                {chips.map((chip) => (
+                  <span key={chip.id} className="inline-flex max-w-full items-center gap-1 rounded-full border border-orange-500/40 bg-orange-500/10 py-1 pl-3 pr-1.5 text-xs text-orange-200">
+                    <span className="truncate">{chip.label}</span>
                     <button
                       type="button"
-                      onClick={() => toggleNewTopic(t)}
+                      onClick={chip.remove}
                       disabled={busy === "add"}
-                      aria-label={`Remove ${t}`}
+                      aria-label={`Remove ${chip.label}`}
                       className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-orange-300 hover:bg-orange-500/20 disabled:opacity-40"
                     >
                       <X className="h-3 w-3" />
@@ -290,59 +518,105 @@ export function TopicsPanel({ examId, section, canEdit, refresh }: { examId: str
                 ))}
               </div>
             )}
-            <TopicSearchDialog open={topicPickerOpen} onOpenChange={setTopicPickerOpen} topics={paperTopics ?? []} loading={loadingTopics} selected={newTopics} onToggle={toggleNewTopic} />
+            {fromPapers ? (
+              <PaperTopicDialog
+                open={topicPickerOpen}
+                onOpenChange={setTopicPickerOpen}
+                papers={paperSources?.papers ?? []}
+                loading={loadingTopics}
+                selected={paperPicks}
+                onCount={setPaperCount}
+              />
+            ) : (
+              <TopicSearchDialog open={topicPickerOpen} onOpenChange={setTopicPickerOpen} topics={paperTopics ?? []} loading={loadingTopics} selected={newTopics} onToggle={toggleNewTopic} />
+            )}
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-gray-300">
-              Description <span className="font-normal text-gray-500">(optional)</span>
-            </label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What should these questions cover? e.g. nested if-else and else-if ladders, with short code to trace"
-              disabled={busy === "add"}
-              rows={2}
-              className="min-h-0 resize-none rounded-none border-0 border-b border-white/20 bg-transparent px-0 shadow-none text-white placeholder:text-zinc-500 focus:border-orange-500 focus-visible:border-orange-500"
-            />
-          </div>
+          {!fromPapers && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-300">
+                Description <span className="font-normal text-gray-500">(optional)</span>
+              </label>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What should these questions cover? e.g. nested if-else and else-if ladders, with short code to trace"
+                disabled={busy === "add"}
+                rows={2}
+                className="min-h-0 resize-none rounded-none border-0 border-b border-white/20 bg-transparent px-0 shadow-none text-white placeholder:text-zinc-500 focus:border-orange-500 focus-visible:border-orange-500"
+              />
+            </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-300">Questions</label>
-              <Input type="number" min={1} max={15} value={count} onChange={(e) => setCount(e.target.value)} disabled={busy === "add"} className="text-white" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-300">Difficulty</label>
-              <Select items={DIFFICULTY_ITEMS} value={difficulty} onValueChange={(v) => v && setDifficulty(v)} disabled={busy === "add"}>
-                <SelectTrigger className="w-full text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="border-white/10 bg-[#0f0f11] text-white">
-                  <SelectItem value="easy">Easy</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="hard">Hard</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {groups.length > 1 && (
-              <div className="col-span-2 space-y-1.5 sm:col-span-1">
-                <label className="text-xs font-semibold text-gray-300">Add to</label>
-                <Select items={blockItems} value={chosenBlockId} onValueChange={(v) => v && setBlockId(v)} disabled={busy === "add"}>
+          {fromPapers ? (
+            askPaperType && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-300">Question type</label>
+                <div className="flex gap-2">
+                  {(["mcq", "descriptive"] as const).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => changePaperType(type)}
+                      disabled={busy === "add"}
+                      aria-pressed={paperType === type}
+                      className={cn(
+                        "h-9 rounded-full border px-4 text-xs font-semibold transition-colors disabled:opacity-50",
+                        paperType === type ? "border-orange-500 bg-orange-500/15 text-orange-200" : "border-white/15 text-gray-400 hover:text-white"
+                      )}
+                    >
+                      {type === "mcq" ? "MCQ" : "Written"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          ) : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-300">Questions</label>
+                <Input type="number" min={1} max={15} value={count} onChange={(e) => setCount(e.target.value)} disabled={busy === "add"} className="text-white" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-300">Difficulty</label>
+                <Select items={DIFFICULTY_ITEMS} value={difficulty} onValueChange={(v) => v && setDifficulty(v)} disabled={busy === "add"}>
                   <SelectTrigger className="w-full text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="border-white/10 bg-[#0f0f11] text-white">
-                    {blockItems.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="easy">Easy</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="hard">Hard</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            )}
-          </div>
+              {groups.length > 1 && (
+                <div className="col-span-2 space-y-1.5 sm:col-span-1">
+                  <label className="text-xs font-semibold text-gray-300">Add to</label>
+                  <Select
+                    items={blockItems}
+                    value={chosenBlockId}
+                    onValueChange={(v) => {
+                      if (!v) return;
+                      setBlockId(v);
+                    }}
+                    disabled={busy === "add"}
+                  >
+                    <SelectTrigger className="w-full text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="border-white/10 bg-[#0f0f11] text-white">
+                      {blockItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
             <Button variant="ghost" onClick={() => setIsAdding(false)} disabled={busy === "add"} className="text-gray-400 hover:text-white">
@@ -351,7 +625,12 @@ export function TopicsPanel({ examId, section, canEdit, refresh }: { examId: str
             <Button onClick={handleAdd} disabled={busy === "add"} className="bg-orange-600 font-semibold text-white hover:bg-orange-700">
               {busy === "add" ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {progress && progress.total > 1 ? `Writing topic ${progress.done + 1} of ${progress.total}…` : "Writing questions…"}
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />{" "}
+                  {fromPapers ? "Adding questions…" : progress && progress.total > 1 ? `Writing topic ${progress.done + 1} of ${progress.total}…` : "Writing questions…"}
+                </>
+              ) : fromPapers ? (
+                <>
+                  <Plus className="mr-2 h-4 w-4" /> Add questions
                 </>
               ) : (
                 <>
@@ -360,7 +639,7 @@ export function TopicsPanel({ examId, section, canEdit, refresh }: { examId: str
               )}
             </Button>
           </div>
-          {busy === "add" && <p className="text-xs text-gray-500">The AI is planning subtopics and writing questions. This can take up to a minute per topic.</p>}
+          {busy === "add" && !fromPapers && <p className="text-xs text-gray-500">The AI is planning subtopics and writing questions. This can take up to a minute per topic.</p>}
         </div>
       )}
     </div>

@@ -348,7 +348,7 @@ export default function ResultsPage() {
                           components={{
                             pre: ({ children }) => {
                               return (
-                                <div className="my-3 rounded-xl overflow-hidden border border-white/10 bg-[#09090b]">
+                                <div className="my-3 rounded-xl overflow-hidden border border-white/10 bg-[#09090b] keep-dark">
                                   <div className="p-4 overflow-x-auto custom-scrollbar font-normal">
                                     {children}
                                   </div>

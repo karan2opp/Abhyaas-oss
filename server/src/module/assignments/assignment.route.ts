@@ -13,6 +13,7 @@ import {
     saveAssignmentAnswerSchema,
     gradeAssignmentSubmissionSchema,
     joinAssignmentSchema,
+    copyFromExamSchema,
 } from "./dto/assignment.dto.js";
 
 const router = Router();
@@ -52,6 +53,7 @@ router.patch("/:id", authenticate, authorize("teacher"), validate(updateAssignme
 router.post("/:id/extend", authenticate, authorize("teacher"), validate(extendAssignmentSchema), controller.extendAssignment);
 router.delete("/:id", authenticate, authorize("teacher"), controller.deleteAssignment);
 router.get("/:id/questions", authenticate, authorize("teacher", "student"), controller.getQuestions);
+router.post("/:id/questions/from-exam", authenticate, authorize("teacher"), validate(copyFromExamSchema), controller.copyQuestionsFromExam);
 
 // student: start assignment, view own submission
 router.post("/:id/start", authenticate, authorize("student"), controller.startAssignment);

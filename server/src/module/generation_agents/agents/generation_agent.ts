@@ -33,7 +33,7 @@ export interface GenerateTopicQuestionsInput {
  * by simply re-running the call rather than needing a separate repair pass.
  */
 export async function generateTopicQuestions(input: GenerateTopicQuestionsInput): Promise<GeneratedQuestionsOutput> {
-    const client = await getClientForModel(env.GENERATION_MODEL);
+    const client = await getClientForModel(env.GENERATION_MODEL, "question_generation");
     const expectedCount = input.subtopics.reduce((sum, s) => sum + s.count, 0);
 
     const payload = {

@@ -69,6 +69,16 @@ export const addTopicService = async (examId: string, data: { sectionId: string;
   return res.data;
 };
 
+/** Adds real questions from the past papers the exam was made from: subtopics (keys from the topic picker) and how many of each. No AI. */
+export const addPaperTopicsService = async (
+  examId: string,
+  // questionType is only needed when the section has both MCQ and written groups.
+  data: { sectionId: string; questionType?: "mcq" | "descriptive"; picks: { documentId: string; subtopic: string; count: number }[] }
+) => {
+  const res = await api.post(`/exams/${examId}/topics/from-papers`, data);
+  return res.data;
+};
+
 // Removes a topic from a draft exam by deleting the questions tagged with it.
 export const removeTopicService = async (examId: string, data: { sectionId: string; topic: string }) => {
   const res = await api.post(`/exams/${examId}/topics/remove`, data);

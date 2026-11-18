@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./light-theme.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -134,6 +135,29 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.3);
   }
+}
+
+/* ── Light mode (app screens) ───────────────────────────────────────────────────────────────────────────────────────────
+   Base tokens for the app's light theme. The screens' own dark-only colour classes are switched in light-theme.css (generated).
+   The landing page has its own theme and is left out. */
+html.light:not(:has(.landing)) {
+  --background: #ead8ac;
+  --foreground: #18181b;
+  --card: #f5e3b8;
+  --card-foreground: #18181b;
+  --popover: #f5e3b8;
+  --popover-foreground: #18181b;
+  --muted: #eed7a0;
+  --muted-foreground: #52525b;
+  --accent: #eed7a0;
+  --accent-foreground: #18181b;
+  --border: #cdb274;
+  --input: #c6ae78;
+  --sidebar: #f5e3b8;
+  --sidebar-foreground: #18181b;
+  --sidebar-accent: #eed7a0;
+  --sidebar-accent-foreground: #18181b;
+  --sidebar-border: #cdb274;
 }
 
 /* ── Landing page theme ───────────────────────────────────────────────────────────────────────────────────────────────

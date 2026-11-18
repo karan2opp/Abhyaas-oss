@@ -1,6 +1,7 @@
 import { createId } from "@paralleldrive/cuid2";
 import { inngest } from "../../../common/inngest/client.js";
-import { bindAiUser } from "../../../common/agent/ai_context.js";
+import { bindAiUser, runAsAiUser } from "../../../common/agent/ai_context.js";
+import { withUsageSteps } from "../../../common/agent/usage_context.js";
 import { toAiKeyApiError } from "../../ai_keys/ai_key.service.js";
 import { recordUsage } from "../../plans/quota.service.js";
 import { generateSectionSubtopics } from "../agents/subtopics_agent.js";
@@ -59,7 +60,10 @@ export const generateBlueprintFunction = inngest.createFunction(
         const sessionId = event.data.sessionId as string;
         // The AI work below is billed to the teacher this session belongs to, with their own key.
         const owner = (await getSession(sessionId))?.createdBy;
-        if (owner) bindAiUser(owner);
+        if (owner) {
+            bindAiUser(owner);
+            step = withUsageSteps(step, {}, (fn) => runAsAiUser(owner, fn));
+        }
 
         try {
             const session = await step.run("load-session", async () => {
@@ -180,7 +184,10 @@ export const generateQuestionsFunction = inngest.createFunction(
         const sessionId = event.data.sessionId as string;
         // The AI work below is billed to the teacher this session belongs to, with their own key.
         const owner = (await getSession(sessionId))?.createdBy;
-        if (owner) bindAiUser(owner);
+        if (owner) {
+            bindAiUser(owner);
+            step = withUsageSteps(step, {}, (fn) => runAsAiUser(owner, fn));
+        }
 
         try {
             const session = await step.run("load-session-for-questions", async () => {

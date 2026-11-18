@@ -3,14 +3,17 @@ import os from "node:os";
 import path from "node:path";
 import pLimit from "p-limit";
 import { inngest } from "../../../common/inngest/client.js";
-import { bindAiUser } from "../../../common/agent/ai_context.js";
+import { bindAiUser, runAsAiUser } from "../../../common/agent/ai_context.js";
+import { withUsageSteps } from "../../../common/agent/usage_context.js";
 import { toAiKeyApiError } from "../../ai_keys/ai_key.service.js";
 import { extractPdf } from "../../../common/pdf/pdf_python_bridge.js";
 import { uploadToCloudinary } from "../../../common/config/cloudinary.js";
-import { chunkQuestionBankDocument, type QuestionBankRawChunk } from "../question_bank_chunker.js";
-import { classifyQuestionBankChunks, type ChunkClassification } from "../question_bank_classifier.js";
-import { parseAnswerKey, stripAnswerKeyContent } from "../question_bank_answer_key.js";
-import { getDocument, markDocumentProcessing, markDocumentCompleted, markDocumentFailed, saveChunk, embedText } from "../question_bank.service.js";
+import { chunkByPlan, chunkQuestionBankDocument, type QuestionBankRawChunk } from "../question_bank_chunker.js";
+import { classifyQuestionBankChunks } from "../question_bank_classifier.js";
+import { matchKeyToQuestions, parseAnswerKey, resolveAnswerLabel, splitIntoBlocks, stripAnswerKeyContent, type AnswerKeyBlock } from "../question_bank_answer_key.js";
+import { splitPaper } from "../question_bank_splitter.js";
+import { getDocument, markDocumentProcessing, markDocumentCompleted, markDocumentFailed, saveChunk, embedText, setDocumentProgress, deleteChunksByDocument, setDocumentTopicTree } from "../question_bank.service.js";
+import { buildTopicTree, mainSubject } from "../question_bank_topic_tree.js";
 import { upsertQuestionBankPoints } from "../qdrant_client.js";
 import type { QuestionBankImage, QuestionBankTable, QuestionBankList } from "../question_bank.schema.js";
 
@@ -26,8 +29,11 @@ async function downloadToFile(url: string, destPath: string): Promise<void> {
 
 /**
  * Full question-bank ingestion pipeline for one uploaded PDF: extract (the
- * shared PyMuPDF subprocess) -> chunk per question (bbox-based, see
- * question_bank_chunker.ts) -> classify + mechanically clean each chunk
+ * shared PyMuPDF subprocess) -> a fast model finds where each question starts
+ * and reads the answer key (question_bank_splitter.ts), and code cuts the
+ * questions out (bbox-based, see question_bank_chunker.ts) -> classify +
+ * mechanically clean each chunk, working out MCQ answers the paper doesn't give
+ * -> (after saving) group the paper's subtopics into broad topics
  * (subject/topics/description, and a spacing/spelling/stray-text cleanup
  * pass over the extracted text — never a rewrite, see
  * question_bank_classifier.ts) -> embed the description -> persist the
@@ -44,7 +50,10 @@ export const processQuestionBankDocumentFunction = inngest.createFunction(
         const documentId = event.data.documentId as string;
         // Reading and indexing this document uses AI, billed to the teacher who uploaded it, with their own key.
         const owner = (await getDocument(documentId))?.createdBy;
-        if (owner) bindAiUser(owner);
+        if (owner) {
+            bindAiUser(owner);
+            step = withUsageSteps(step, {}, (fn) => runAsAiUser(owner, fn));
+        }
 
         let tmpDir: string | null = null;
 
@@ -56,7 +65,13 @@ export const processQuestionBankDocumentFunction = inngest.createFunction(
                 return doc;
             });
 
+            // The progress bar in the paper list. Never allowed to fail the paper.
+            const progress = (percent: number, label: string) => {
+                void setDocumentProgress(documentId, percent, label).catch(() => {});
+            };
+
             const { extracted, tmpDir: dir } = await step.run("download-and-extract", async () => {
+                progress(2, "Reading the PDF");
                 const workDir = await fs.mkdtemp(path.join(os.tmpdir(), "question-bank-"));
                 const pdfPath = path.join(workDir, "input.pdf");
                 const outputDir = path.join(workDir, "out");
@@ -67,40 +82,68 @@ export const processQuestionBankDocumentFunction = inngest.createFunction(
             });
             tmpDir = dir;
 
-            const classifiedChunks = await step.run("chunk-and-classify", async () => {
-                // Document-level pass first: an end-of-paper answer key is
-                // invisible to the classifier, which only ever sees one
-                // question at a time.
-                const answerKey = parseAnswerKey(extracted);
-                if (answerKey.size > 0) {
-                    console.log(`[question-bank] found an answer key with ${answerKey.size} entr(ies) for document ${documentId}`);
+            // Where each question starts and what the answer key says. Its own step, so a later failure doesn't pay
+            // for this again. If the splitter can't be used, the paper is cut with the old "Q + number" rule.
+            const split = await step.run("split-questions", async () => {
+                const started = Date.now();
+                const patternKey = parseAnswerKey(extracted);
+                try {
+                    progress(10, "Finding the questions");
+                    const plan = await splitPaper(extracted, documentId, (done, total) => progress(10 + (15 * done) / total, "Finding the questions"));
+                    if (plan.questionCount === 0) throw new Error("the splitter found no questions");
+                    const rawChunks = chunkByPlan(extracted, plan.roles);
+                    const splitterKey = splitIntoBlocks(plan.answerKey);
+                    console.log(`[question-bank] split ${documentId} into ${rawChunks.length} question(s) in ${Date.now() - started}ms (answer key: ${plan.answerKey.length} entr(ies))`);
+                    return { method: "splitter" as const, rawChunks, keyBlocks: splitterKey.length > 0 ? splitterKey : patternKey };
+                } catch (err: any) {
+                    console.warn(`[question-bank] splitter unavailable for ${documentId} (${err?.message ?? err}) — using the Q-marker split`);
+                    // Strip a recognised key before classifying, so the last question doesn't carry it as its content.
+                    const rawChunks: QuestionBankRawChunk[] = chunkQuestionBankDocument(extracted).map(stripAnswerKeyContent);
+                    return { method: "fallback" as const, rawChunks, keyBlocks: patternKey as AnswerKeyBlock[] };
+                }
+            });
+
+            const classifiedChunks = await step.run("classify", async () => {
+                const started = Date.now();
+                const { rawChunks, keyBlocks } = split;
+
+                const keyed = matchKeyToQuestions(rawChunks.map((chunk) => chunk.questionNumber), keyBlocks);
+                if (keyBlocks.length > 0 && !keyed.usable) {
+                    console.warn(`[question-bank] answer key for document ${documentId} could not be matched to the questions — leaving it unused`);
                 }
 
-                // Strip it before classifying, so the last question doesn't
-                // carry the whole key as its own content.
-                const rawChunks: QuestionBankRawChunk[] = chunkQuestionBankDocument(extracted).map(stripAnswerKeyContent);
-                console.log(`[question-bank] detected ${rawChunks.length} question chunk(s) for document ${documentId}`);
+                progress(25, `Reading questions 0 of ${rawChunks.length}`);
+                const classifications = await classifyQuestionBankChunks(rawChunks, keyed.answers.map((answer) => !!answer), (done, total) =>
+                    progress(25 + (45 * done) / total, `Reading questions ${done} of ${total}`)
+                );
 
-                const classifications: ChunkClassification[] = await classifyQuestionBankChunks(rawChunks);
-
-                return rawChunks.map((chunk, i) => {
+                let fromAi = 0;
+                const result = rawChunks.map((chunk, i) => {
                     const classification = classifications[i]!;
-                    // An answer printed inline with the question wins: it sits
-                    // right next to it and can't be mis-numbered. The key is
-                    // the fallback for everything else.
-                    const fromKey = chunk.questionNumber ? answerKey.get(String(parseInt(chunk.questionNumber, 10))) : undefined;
-                    return {
-                        chunk,
-                        classification: {
-                            ...classification,
-                            correctOption: classification.correctOption ?? fromKey ?? null,
-                        },
-                    };
+                    const labels = classification.options.map((o) => o.label);
+                    // The paper's own answer comes first: its answer key, then an answer printed with the question.
+                    // Only when the paper gives none is the answer the model worked out used. Every one of them has to
+                    // name a real option of this question.
+                    const fromKey = keyed.answers[i] ? resolveAnswerLabel(keyed.answers[i]!, labels) : null;
+                    const fromPaper = fromKey ?? classification.correctOption;
+                    const correctOption = fromPaper ?? classification.solvedOption;
+                    const answerSource = fromPaper ? ("paper" as const) : correctOption ? ("ai" as const) : null;
+                    if (answerSource === "ai") fromAi++;
+                    return { chunk, classification: { ...classification, correctOption, answerSource } };
                 });
+
+                console.log(`[question-bank] classified ${rawChunks.length} question(s) for ${documentId} in ${Date.now() - started}ms (${fromAi} answer(s) worked out by the model)`);
+                return result;
             });
 
             const totalChunks = await step.run("persist-chunks", async () => {
+                const started = Date.now();
+                // If this step is being retried after failing partway, its earlier saves are still there. Clearing
+                // them first means a retry replaces the questions instead of storing a second copy of each.
+                await deleteChunksByDocument(documentId);
                 const limit = pLimit(PERSIST_CONCURRENCY);
+                let savedCount = 0;
+                progress(70, `Saving questions 0 of ${classifiedChunks.length}`);
 
                 await Promise.all(
                     classifiedChunks.map(({ chunk, classification }) =>
@@ -129,6 +172,7 @@ export const processQuestionBankDocumentFunction = inngest.createFunction(
                                 questionText: classification.questionText,
                                 options: classification.options,
                                 correctOption: classification.correctOption,
+                                answerSource: classification.answerSource,
                                 subject: classification.subject,
                                 topics: classification.topics,
                                 description: classification.description,
@@ -158,11 +202,26 @@ export const processQuestionBankDocumentFunction = inngest.createFunction(
                                     },
                                 },
                             ]);
+                            savedCount++;
+                            progress(70 + (25 * savedCount) / classifiedChunks.length, `Saving questions ${savedCount} of ${classifiedChunks.length}`);
                         })
                     )
                 );
 
+                console.log(`[question-bank] saved ${classifiedChunks.length} question(s) for ${documentId} in ${Date.now() - started}ms`);
                 return classifiedChunks.length;
+            });
+
+            // One small call that reads only the subtopic names and groups them into broad topics, so the teacher
+            // can browse the paper chapter by chapter. Never fails the paper: on any problem it saves a flat list.
+            await step.run("group-topics", async () => {
+                progress(96, "Grouping the topics");
+                const tree = await buildTopicTree(
+                    classifiedChunks.map(({ classification }) => classification.topics),
+                    mainSubject(classifiedChunks.map(({ classification }) => classification.subject))
+                );
+                await setDocumentTopicTree(documentId, tree);
+                console.log(`[question-bank] grouped topics into ${tree.broadTopics.length} broad topic(s) for document ${documentId}`);
             });
 
             await step.run("finalize", async () => {

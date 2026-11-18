@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { verifyJoinCodeService, joinExamService } from "@/app/student/student.service";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 
 // Splits the time left into the units shown on the timer. Days only appear when the exam is more than a day away.
 const timeParts = (seconds: number) => {
@@ -74,6 +75,7 @@ export default function WaitingRoomPage() {
 
   return (
     <div className="relative flex w-full flex-1 flex-col items-center justify-center px-4 pb-[10vh] text-center">
+      <ThemeSwitch className="fixed right-3 top-3 z-20" />
       <button
         onClick={() => router.push("/student")}
         className="absolute left-4 top-4 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-400 transition-colors hover:bg-white/5 hover:text-white sm:left-6 sm:top-6"

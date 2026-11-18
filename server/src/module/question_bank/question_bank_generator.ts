@@ -1,11 +1,12 @@
 import { and, asc, inArray, notInArray, sql } from "drizzle-orm";
 import db from "../../common/db/index.js";
-import { questionBankChunks } from "./question_bank.schema.js";
+import { questionBankChunks, type QuestionBankTable } from "./question_bank.schema.js";
 import type { QuestionType } from "../generation_agents/Types/inputExam.js";
 import { searchQuestionBank } from "./question_bank.service.js";
 import type { QuestionBankAccess } from "./qdrant_client.js";
 import type { QuestionContentBlock } from "../questions/question.schema.js";
 import { rankCandidatesForGoal } from "./question_bank_ranker.js";
+import { isQuestionTable } from "./question_bank_chunker.js";
 
 // For every question wanted, this many candidates are looked at, so the best fit can be chosen from a few instead of
 // taking the first ones blindly. Capped so a large request stays cheap.
@@ -66,19 +67,34 @@ const stripPrintedMarks = (text: string) => text.replace(PRINTED_MARKS_RE, "").t
 const POSITIONAL_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
 /**
+ * A table read from the paper, as a table block. The PDF reader lists the header row again as the first row; it is
+ * shown once. A table with no header row found uses its first row as the header.
+ */
+function tableBlock(table: QuestionBankTable): QuestionContentBlock {
+    const cells = (row: (string | null)[]) => row.map((cell) => (cell ?? "").trim());
+    const rows = table.rows.map(cells);
+    const header = table.header ? cells(table.header) : (rows[0] ?? []);
+    const body = rows.length > 0 && rows[0]!.join("\u0000") === header.join("\u0000") ? rows.slice(1) : rows;
+    return { type: "table", headers: header, rows: body };
+}
+
+/**
  * Maps one stored chunk onto the response shape. Options are returned as
  * plain strings in printed order and the answer becomes the POSITIONAL letter
  * of the correct option, because that is what the UI matches against — a
  * paper labelled (i)/(ii)/(iii) would otherwise never line up.
  */
-function toRetrievedQuestion(chunk: ChunkRow, topic: string, marks: number): RetrievedQuestion {
+export function toRetrievedQuestion(chunk: ChunkRow, topic: string, marks: number): RetrievedQuestion {
     const options = chunk.options ?? [];
     const base = {
         id: chunk.id,
         topic,
         question_text: stripPrintedMarks(chunk.questionText || chunk.rawText),
         marks,
-        content_blocks: (chunk.images ?? []).map((img): QuestionContentBlock => ({ type: "image", url: img.url, width: img.width, height: img.height })),
+        content_blocks: [
+            ...(chunk.tables ?? []).filter(isQuestionTable).map(tableBlock),
+            ...(chunk.images ?? []).map((img): QuestionContentBlock => ({ type: "image", url: img.url, width: img.width, height: img.height })),
+        ],
         source: {
             documentId: chunk.documentId,
             questionNumber: chunk.questionNumber,

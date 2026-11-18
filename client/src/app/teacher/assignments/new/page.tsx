@@ -6,13 +6,13 @@ import { ArrowLeft, ArrowRight, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-import { createAssignmentService, createQuestionService, updateAssignmentService } from "@/app/teacher/assignments/assignment.service";
+import { createAssignmentService, copyQuestionsFromExamService, updateAssignmentService } from "@/app/teacher/assignments/assignment.service";
 import { createExamService } from "@/app/teacher/exams/exam.service";
 import { AssignmentDetailsForm, AssignmentDetails, EMPTY_ASSIGNMENT_DETAILS } from "./AssignmentDetailsForm";
 import { QuestionBuilder, AiExamGeneratorForm, WorkspaceParts } from "../../exams/new/QuestionBuilder";
 import { PyqFlow } from "../../exams/new/PyqFlow";
 import { SourceFlow } from "../../exams/new/SourceFlow";
-import { suggestTitleFromSections } from "../../exams/new/ExamDetailsForm";
+import { AiEvaluationSettings, suggestTitleFromSections } from "../../exams/new/ExamDetailsForm";
 import { WorkspaceShell, ModePicker, CreationMode } from "../../exams/new/workspace";
 import QuestionReviewChat from "@/components/QuestionReviewChat";
 import { useExamBuilderStore } from "@/store/useExamBuilderStore";
@@ -42,6 +42,9 @@ function NewAssignmentBuilderContent() {
   // The review chat is a full view of its own, opened from the question list, instead of a panel beside it.
   const [showReview, setShowReview] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  // Whether the AI grades written answers, and the teacher's marking scheme for them (asked on the publish step).
+  const [aiEvaluation, setAiEvaluation] = useState(true);
+  const [evaluationScheme, setEvaluationScheme] = useState("");
 
   useEffect(() => {
     setIsMounted(true);
@@ -49,13 +52,14 @@ function NewAssignmentBuilderContent() {
   }, [resetStore]);
 
   const questionCount = useMemo(() => sections.reduce((n, s) => n + (s.questions?.length || 0), 0), [sections]);
+  const hasWrittenQuestions = useMemo(() => sections.some((s) => (s.questions || []).some((q: any) => q.type === "descriptive")), [sections]);
   const totalMarks = useMemo(
     () => sections.reduce((sum, s) => sum + (s.questions || []).reduce((m: number, q: any) => m + (Number(q.marks) || 0), 0), 0),
     [sections]
   );
 
-  // The first pick creates the draft assignment and the working exam its questions are built in; picking again later
-  // (after going back) reuses them.
+  // The first pick creates the draft assignment and the working exam its questions are built in (hidden from the exam
+  // lists, and deleted once its questions are copied in); picking again later (after going back) reuses them.
   const handlePickMode = async (picked: CreationMode) => {
     if (assignmentId && examId) {
       setMode(picked);
@@ -67,7 +71,7 @@ function NewAssignmentBuilderContent() {
       const newAssignment = data.data || data;
       setAssignmentId(newAssignment.id || newAssignment._id);
 
-      const examData = await createExamService({ title: PLACEHOLDER_ASSIGNMENT_TITLE, type: "ON_DEMAND", duration: 60, instructions: [], totalMarks: 0 });
+      const examData = await createExamService({ title: PLACEHOLDER_ASSIGNMENT_TITLE, type: "ON_DEMAND", status: "UNSAVED", duration: 60, instructions: [], totalMarks: 0 });
       const newExam = examData.data || examData;
       setExamId(newExam.id || newExam._id);
       setMode(picked);
@@ -103,31 +107,17 @@ function NewAssignmentBuilderContent() {
         instructions: details.instructions.filter((i) => i.trim() !== "").join("\n"),
         startDate: details.startDate ? new Date(details.startDate).toISOString() : null,
         dueDate: details.dueDate ? new Date(details.dueDate).toISOString() : null,
+        aiEvaluation,
+        evaluationScheme: aiEvaluation ? evaluationScheme.trim() || null : null,
       });
 
-      // Sync generated questions from sections tree to assignment questions
-      const MCQ_LETTERS = ["A", "B", "C", "D"];
+      // The server copies the questions exactly as built (sections, code, tables, pictures, topics, correct answers) and
+      // deletes the working exam.
       let importedCount = 0;
-      for (const section of sections) {
-        const qList = section.questions || [];
-        for (const q of qList) {
-          const type = q.type === "mcq" || q.questionType === "mcq" || q.options?.length ? "mcq" : "descriptive";
-          const rawOpts = q.options || [];
-          const options = type === "mcq" && rawOpts.length ? rawOpts.map((opt: any, idx: number) => ({
-            value: typeof opt === "string" ? opt : opt.text || opt.value || "",
-            isCorrect: opt.isCorrect ?? (MCQ_LETTERS[idx] === q.correct_option || idx === 0),
-          })) : undefined;
-
-          await createQuestionService({
-            assignmentId,
-            type,
-            description: q.question_text || q.description || q.stem || "Question",
-            marks: Number(q.marks) || 5,
-            modelAnswer: q.modelAnswer || q.model_answer || undefined,
-            options,
-          });
-          importedCount++;
-        }
+      if (examId) {
+        const copied = await copyQuestionsFromExamService(assignmentId, examId);
+        importedCount = (copied.data || copied).questionCount ?? 0;
+        setExamId(null);
       }
 
       toast.success(importedCount > 0 ? `Assignment published with ${importedCount} question(s)!` : "Assignment saved!");
@@ -221,6 +211,9 @@ function NewAssignmentBuilderContent() {
               {sections.length} section{sections.length === 1 ? "" : "s"} · {questionCount} question{questionCount === 1 ? "" : "s"} · {totalMarks} marks
             </p>
             <AssignmentDetailsForm values={details} onChange={(patch) => setDetails((prev) => ({ ...prev, ...patch }))} />
+            {hasWrittenQuestions && (
+              <AiEvaluationSettings value={aiEvaluation} onChange={setAiEvaluation} scheme={evaluationScheme} onSchemeChange={setEvaluationScheme} />
+            )}
           </div>
         }
         footer={

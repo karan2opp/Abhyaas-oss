@@ -114,7 +114,7 @@ export async function blueprintReviewAgentTurn(
     userMessage: string,
     hooks?: StreamHooks
 ): Promise<BlueprintReviewResult> {
-    const client = await getClientForModel(env.GENERATION_MODEL);
+    const client = await getClientForModel(env.GENERATION_MODEL, "blueprint_review");
 
     let currentSections = sections;
     const allChangeLog: string[] = [];

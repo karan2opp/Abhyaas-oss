@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import db from "../../common/db/index.js";
-import { exams, questions, sections, submissions } from "../../common/db/schema.js";
+import { assignmentQuestions, assignments, assignmentSubmissions, exams, questions, sections, submissions } from "../../common/db/schema.js";
 import { inngest } from "../../common/inngest/client.js";
 import { enqueueEvaluation } from "../../common/queue/queues.js";
 import type { Rubric } from "./rubric_agent.js";
@@ -61,12 +61,22 @@ export async function finishRubrics(examId: string, status: "ready" | "failed") 
  * Starts writing the grading guides for an exam's written questions, in the background. Does nothing for an exam still being
  * built (status UNSAVED: the teacher has not had the evaluation-scheme question yet) or one with nothing left to write.
  * `regenerateAll` is for a changed evaluation scheme: every written question's rubric is cleared and written again.
+ * Nothing is written while the exam's AI evaluation is off.
  * Never throws: a problem here must not fail the teacher's save.
  */
 export async function scheduleRubrics(examId: string, options: { regenerateAll?: boolean } = {}): Promise<void> {
     try {
-        const [exam] = await db.select({ status: exams.status, rubricStatus: exams.rubricStatus }).from(exams).where(eq(exams.id, examId));
+        const [exam] = await db
+            .select({ status: exams.status, rubricStatus: exams.rubricStatus, aiEvaluation: exams.aiEvaluation })
+            .from(exams)
+            .where(eq(exams.id, examId));
         if (!exam || exam.status === "UNSAVED") return;
+        // The teacher grades written answers themselves: no guides are needed. Anything still waiting on them is let go
+        // (the grading job then leaves those answers for the teacher).
+        if (!exam.aiEvaluation) {
+            if (exam.rubricStatus === "pending") await finishRubrics(examId, "ready");
+            return;
+        }
 
         if (options.regenerateAll) {
             const all = await descriptiveQuestions(examId);
@@ -89,5 +99,92 @@ export async function scheduleRubrics(examId: string, options: { regenerateAll?:
         }
     } catch (err) {
         console.error(`[Rubrics] Could not schedule rubrics for exam ${examId}:`, err);
+    }
+}
+
+// ── Assignments ─────────────────────────────────────────────────────────────────
+// The same as for exams: an assignment's written questions get their guides from its evaluationScheme, written in the
+// background while rubricStatus is "pending", and students' answers wait in "evaluating" until then.
+
+const descriptiveAssignmentQuestions = (assignmentId: string) =>
+    db
+        .select({
+            id: assignmentQuestions.id,
+            description: assignmentQuestions.description,
+            marks: assignmentQuestions.marks,
+            contentBlocks: assignmentQuestions.contentBlocks,
+            rubric: assignmentQuestions.rubric,
+        })
+        .from(assignmentQuestions)
+        .where(and(eq(assignmentQuestions.assignmentId, assignmentId), eq(assignmentQuestions.type, "descriptive")));
+
+/** The written questions of an assignment that have no rubric yet. */
+export async function loadAssignmentQuestionsNeedingRubrics(assignmentId: string) {
+    const all = await descriptiveAssignmentQuestions(assignmentId);
+    return all
+        .filter((q) => q.rubric === null)
+        .map((q) => ({ id: q.id, description: q.description, marks: q.marks, contentBlocks: (q.contentBlocks as unknown[] | null) ?? null }));
+}
+
+export async function saveAssignmentRubric(questionId: string, rubric: Rubric) {
+    await db.update(assignmentQuestions).set({ rubric, updatedAt: new Date() }).where(eq(assignmentQuestions.id, questionId));
+}
+
+/** Marks the assignment's guides as ready or failed, and puts the answers that were waiting for them in the grading queue. */
+export async function finishAssignmentRubrics(assignmentId: string, status: "ready" | "failed") {
+    await db.update(assignments).set({ rubricStatus: status, updatedAt: new Date() }).where(eq(assignments.id, assignmentId));
+    const waiting = await db
+        .select({ id: assignmentSubmissions.id })
+        .from(assignmentSubmissions)
+        .where(and(eq(assignmentSubmissions.assignmentId, assignmentId), eq(assignmentSubmissions.status, "evaluating")));
+    for (const { id } of waiting) {
+        try {
+            await enqueueEvaluation("evaluate-assignment", { submissionId: id });
+        } catch (err) {
+            // The recovery sweep (workers.ts) picks it up within minutes.
+            console.error(`[Rubrics] Could not queue assignment submission ${id} for grading:`, err);
+        }
+    }
+}
+
+/**
+ * Starts writing the grading guides for an assignment's written questions, in the background. Nothing is written while the
+ * assignment's AI evaluation is off, or when every written question already has one. `regenerateAll` is for a changed
+ * evaluation scheme: every written question's rubric is cleared and written again.
+ * Never throws: a problem here must not fail the teacher's save.
+ */
+export async function scheduleAssignmentRubrics(assignmentId: string, options: { regenerateAll?: boolean } = {}): Promise<void> {
+    try {
+        const [assignment] = await db
+            .select({ rubricStatus: assignments.rubricStatus, aiEvaluation: assignments.aiEvaluation })
+            .from(assignments)
+            .where(eq(assignments.id, assignmentId));
+        if (!assignment) return;
+        if (!assignment.aiEvaluation) {
+            if (assignment.rubricStatus === "pending") await finishAssignmentRubrics(assignmentId, "ready");
+            return;
+        }
+
+        if (options.regenerateAll) {
+            const all = await descriptiveAssignmentQuestions(assignmentId);
+            if (all.length > 0) await db.update(assignmentQuestions).set({ rubric: null }).where(inArray(assignmentQuestions.id, all.map((q) => q.id)));
+        }
+
+        const needing = await loadAssignmentQuestionsNeedingRubrics(assignmentId);
+        if (needing.length === 0) {
+            if (assignment.rubricStatus === "pending") await finishAssignmentRubrics(assignmentId, "ready");
+            return;
+        }
+
+        await db.update(assignments).set({ rubricStatus: "pending" }).where(eq(assignments.id, assignmentId));
+        try {
+            await inngest.send({ name: "assignment/rubrics.generate", data: { assignmentId } });
+        } catch (err) {
+            // Could not hand the work over (background service not reachable): grade without guides instead of waiting for ever.
+            console.error(`[Rubrics] Could not start writing rubrics for assignment ${assignmentId}:`, err);
+            await finishAssignmentRubrics(assignmentId, "failed");
+        }
+    } catch (err) {
+        console.error(`[Rubrics] Could not schedule rubrics for assignment ${assignmentId}:`, err);
     }
 }

@@ -45,7 +45,7 @@ const normalizeWeights = (categories: Rubric["categories"]): Rubric["categories"
  * there is one. Throws when the reply leaves a question out or gives it no categories, so the caller's retry asks again.
  */
 export async function generateRubrics(questions: RubricQuestion[], scheme: string | null): Promise<Map<string, Rubric>> {
-    const client = await getClientForModel(env.GENERATION_MODEL);
+    const client = await getClientForModel(env.GENERATION_MODEL, "rubric");
 
     const payload = {
         ...(scheme ? { evaluation_scheme: scheme } : {}),

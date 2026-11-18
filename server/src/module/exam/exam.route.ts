@@ -13,6 +13,7 @@ router.get("/", authenticate, authorize("teacher"), controller.getExams);
 router.get("/me", authenticate, authorize("student"), controller.getMyExams);
 router.get("/:id", authenticate, authorize("teacher"), controller.getExamById);
 router.post("/:id/topics", authenticate, authorize("teacher"), controller.addTopic);
+router.post("/:id/topics/from-papers", authenticate, authorize("teacher"), controller.addTopicFromPapers);
 router.post("/:id/topics/remove", authenticate, authorize("teacher"), controller.removeTopic);
 router.patch("/:id", authenticate, authorize("teacher"), validate(updateExamSchema), controller.updateExam);
 router.delete("/:id", authenticate, authorize("teacher"), controller.deleteExam);

@@ -85,6 +85,12 @@ const saveGeneratedExam = async (data: any, requester: Requester) => {
             }
         }
 
+        // The past papers these questions were taken from, sent by the past-paper flow. Kept on the exam (added to any
+        // it already has), so adding a topic later can offer those papers' topics.
+        const sourceDocumentIds: string[] = Array.isArray(data.sourceDocumentIds)
+            ? [...new Set<string>(data.sourceDocumentIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0))]
+            : [];
+
         let examId = data.examId;
         let exam;
 
@@ -101,6 +107,9 @@ const saveGeneratedExam = async (data: any, requester: Requester) => {
                 .set({
                     totalMarks: calculatedTotalMarks,
                     status: data.status || existingExam.status,
+                    ...(sourceDocumentIds.length > 0
+                        ? { sourceDocumentIds: [...new Set([...(existingExam.sourceDocumentIds ?? []), ...sourceDocumentIds])] }
+                        : {}),
                     updatedAt: new Date()
                 })
                 .where(eq(exams.id, examId))
@@ -126,6 +135,7 @@ const saveGeneratedExam = async (data: any, requester: Requester) => {
                 joinCode,
                 createdBy: requester.id,
                 status: data.status || "DRAFT",
+                sourceDocumentIds: sourceDocumentIds.length > 0 ? sourceDocumentIds : null,
             }).returning();
             exam = newExam;
         }

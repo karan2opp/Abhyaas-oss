@@ -27,7 +27,7 @@ export async function callStructured<T extends z.ZodTypeAny>(
     system: string,
     user: string
 ): Promise<z.infer<T>> {
-    const client = await getClientForModel(env.GENERATION_MODEL);
+    const client = await getClientForModel(env.GENERATION_MODEL, "book_indexing");
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {

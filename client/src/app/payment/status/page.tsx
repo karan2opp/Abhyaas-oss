@@ -7,6 +7,7 @@ import { useAuth } from "@clerk/nextjs";
 import { CheckCircle2, Loader2, XCircle, Clock } from "lucide-react";
 import { getOrderStatusService } from "@/services/plan.service";
 import { useAuthStore } from "@/store/authStore";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 
 // Cashfree sends the person here after they pay (or give up), with ?order_id=... in the address. This page doesn't decide
 // whether the payment worked: it asks our server, which only says "paid" once Cashfree has confirmed it (the webhook).
@@ -62,6 +63,7 @@ function PaymentStatus() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#050505] px-4 text-white">
+      <ThemeSwitch className="fixed right-3 top-3 z-20" />
       <div className="w-full max-w-sm space-y-5 text-center">
         {isLoaded && !isSignedIn ? (
           <>

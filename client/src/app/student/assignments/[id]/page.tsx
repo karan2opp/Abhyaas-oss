@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Check, CheckCircle2, Clock } from "lucide-react";
+import { ArrowLeft, CalendarX2, CheckCircle2, Clock, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
@@ -14,6 +14,8 @@ import {
   getMySubmissionService,
 } from "../assignment.service";
 import { formatDateTime } from "@/lib/date";
+import { SUBMISSION_CLOSED_MESSAGE, TestTakingScreen, type TestQuestion } from "@/components/TestTakingScreen";
+import { OptionValue, QuestionText } from "@/components/QuestionContentBlocks";
 
 interface Assignment {
   id: string;
@@ -24,17 +26,16 @@ interface Assignment {
   dueDate: string | null;
 }
 
-interface Option {
-  id: string;
-  value: string;
-}
-
 interface Question {
   id: string;
   type: "mcq" | "descriptive";
   description: string;
   marks: number;
-  options: Option[];
+  images?: { url: string }[] | null;
+  contentBlocks?: any[] | null;
+  // The exam section the question was built in; null for questions written by hand.
+  sectionTitle?: string | null;
+  options: { id: string; value: string; isCode?: boolean }[];
 }
 
 interface Answer {
@@ -56,6 +57,11 @@ interface Submission {
   answers?: Answer[];
 }
 
+/**
+ * A student's assignment. Answering happens on the same screen as an exam, without a timer: the due date is shown
+ * instead, and after it nothing can be submitted. Once submitted, the student sees their answers (and marks when graded)
+ * and can still edit them until the due date.
+ */
 export default function StudentAssignmentPage() {
   const params = useParams();
   const router = useRouter();
@@ -65,265 +71,228 @@ export default function StudentAssignmentPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  // Why it can't be opened yet (not unlocked, or the previous assignment of the series isn't done).
+  const [lockedMessage, setLockedMessage] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
 
-  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
-  const [textAnswers, setTextAnswers] = useState<Record<string, string>>({});
-  const [editingSubmission, setEditingSubmission] = useState(false);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [aRes, qRes, mineRes] = await Promise.all([getAssignmentByIdService(assignmentId), getQuestionsService(assignmentId), getMySubmissionService(assignmentId)]);
+      const a: Assignment = aRes.data;
+      setAssignment(a);
+      setQuestions(qRes.data || []);
 
-  const loadAnswersIntoForm = (sub: Submission) => {
-    const opts: Record<string, string> = {};
-    const texts: Record<string, string> = {};
-    (sub.answers || []).forEach((a) => {
-      if (a.options && a.options[0]) opts[a.questionId] = a.options[0];
-      if (a.textAnswer) texts[a.questionId] = a.textAnswer;
-    });
-    setSelectedOptions(opts);
-    setTextAnswers(texts);
+      let mine: Submission | null = mineRes.data ?? null;
+      const pastDue = !!a.dueDate && Date.now() > new Date(a.dueDate).getTime();
+      // Not started yet and still open: start it now (this also checks it is unlocked).
+      if (!mine && !pastDue) {
+        try {
+          const started = await startAssignmentService(assignmentId);
+          mine = { ...started.data, answers: [] };
+        } catch (err: any) {
+          setLockedMessage(err.response?.data?.message || "This assignment is not open yet.");
+        }
+      }
+      setSubmission(mine);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to load assignment");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const [aRes, qRes, startRes] = await Promise.all([
-          getAssignmentByIdService(assignmentId),
-          getQuestionsService(assignmentId),
-          startAssignmentService(assignmentId),
-        ]);
-        setAssignment(aRes.data);
-        setQuestions(qRes.data || []);
-        const sub: Submission = startRes.data;
-
-        if (sub.status !== "in_progress") {
-          const fullSub = await getMySubmissionService(assignmentId);
-          setSubmission(fullSub.data);
-          loadAnswersIntoForm(fullSub.data);
-        } else {
-          setSubmission(sub);
-          loadAnswersIntoForm(sub);
-        }
-      } catch (err: any) {
-        toast.error(err.response?.data?.message || "Failed to load assignment");
-      } finally {
-        setLoading(false);
-      }
-    })();
+    void load();
   }, [assignmentId]);
 
-  const canEditSubmission =
-    submission?.status === "submitted" &&
-    (!assignment?.dueDate || new Date() <= new Date(assignment.dueDate));
+  // Sections are shown as tabs, as in an exam, when every question belongs to one.
+  const useSections = questions.length > 0 && questions.every((q) => !!q.sectionTitle);
+  const sectionTitles = useMemo(() => (useSections ? [...new Set(questions.map((q) => q.sectionTitle as string))] : []), [questions, useSections]);
+  const testQuestions = useMemo<TestQuestion[]>(
+    () =>
+      questions.map((q, i) => ({
+        id: q.id,
+        globalIndex: i,
+        sectionTitle: useSections ? (q.sectionTitle as string) : "",
+        description: q.description,
+        marks: q.marks,
+        type: q.type,
+        options: q.options || [],
+        images: q.images || [],
+        contentBlocks: q.contentBlocks || [],
+      })),
+    [questions, useSections]
+  );
 
-  const handleSelectOption = async (question: Question, optionId: string) => {
-    if (!submission) return;
-    setSelectedOptions((prev) => ({ ...prev, [question.id]: optionId }));
-    try {
-      await saveAnswerService({ submissionId: submission.id, questionId: question.id, options: [optionId] });
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to save answer");
+  if (loading) return <div className="flex items-center justify-center h-full bg-[#050505] text-white">Loading assignment...</div>;
+  if (!assignment) return <CenteredMessage icon={<CalendarX2 className="h-8 w-8 text-gray-500" />} title="Assignment not found" onBack={() => router.back()} />;
+
+  const pastDue = !!assignment.dueDate && Date.now() > new Date(assignment.dueDate).getTime();
+  const isSubmitted = !!submission && submission.status !== "in_progress";
+
+  // ── Can't be opened yet ──
+  if (lockedMessage) {
+    return <CenteredMessage icon={<Lock className="h-8 w-8 text-amber-400" />} title={assignment.title} message={lockedMessage} onBack={() => router.back()} />;
+  }
+
+  // ── Due date passed without a submission ──
+  if (!isSubmitted && pastDue) {
+    return (
+      <CenteredMessage
+        icon={<CalendarX2 className="h-8 w-8 text-red-400" />}
+        title={assignment.title}
+        message={SUBMISSION_CLOSED_MESSAGE}
+        detail={assignment.dueDate ? `It was due on ${formatDateTime(assignment.dueDate)}.` : undefined}
+        onBack={() => router.back()}
+      />
+    );
+  }
+
+  // ── Answering (first time, or editing a submission before the due date) ──
+  if (submission && (!isSubmitted || editing)) {
+    if (testQuestions.length === 0) {
+      return <CenteredMessage icon={<CalendarX2 className="h-8 w-8 text-gray-500" />} title={assignment.title} message="This assignment has no questions yet." onBack={() => router.back()} />;
     }
-  };
-
-  const handleTextBlur = async (question: Question) => {
-    if (!submission) return;
-    const value = textAnswers[question.id];
-    if (!value || !value.trim()) return;
-    try {
-      await saveAnswerService({ submissionId: submission.id, questionId: question.id, textAnswer: value });
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to save answer");
+    const answers: Record<string, string[]> = {};
+    const textAnswers: Record<string, string> = {};
+    for (const a of submission.answers ?? []) {
+      if (a.options && a.options.length > 0) answers[a.questionId] = a.options;
+      if (a.textAnswer) textAnswers[a.questionId] = a.textAnswer;
     }
-  };
+    const totalMarks = testQuestions.reduce((sum, q) => sum + (q.marks || 0), 0);
+    return (
+      <TestTakingScreen
+        kind="assignment"
+        title={assignment.title}
+        storageId={`assignment:${submission.id}`}
+        questions={testQuestions}
+        sectionTitles={sectionTitles}
+        initialAnswers={answers}
+        initialTextAnswers={textAnswers}
+        clock={{ kind: "due", dueDate: assignment.dueDate }}
+        instructionStats={[
+          { label: "Due", value: assignment.dueDate ? formatDateTime(assignment.dueDate) : "No due date" },
+          { label: "Time limit", value: "None" },
+          { label: "Questions", value: String(testQuestions.length) },
+          { label: "Marks", value: String(totalMarks), accent: true },
+        ]}
+        teacherInstructions={assignment.instructions}
+        skipInstructions={editing}
+        saveAnswer={async (questionId, answer) => {
+          await saveAnswerService({ submissionId: submission.id, questionId, ...answer });
+        }}
+        submit={async () => {
+          await submitAssignmentService(submission.id);
+        }}
+        onSubmitted={() => {
+          setEditing(false);
+          void load();
+        }}
+      />
+    );
+  }
 
-  const handleSubmitAssignment = async () => {
-    if (!submission) return;
-    const isResubmit = submission.status === "submitted";
-    if (!confirm(isResubmit ? "Save your changes to this submission?" : "Submit this assignment? You can still edit it before the due date.")) return;
-    setSubmitting(true);
-    try {
-      await submitAssignmentService(submission.id);
-      toast.success(isResubmit ? "Submission updated" : "Assignment submitted");
-      const fullSub = await getMySubmissionService(assignmentId);
-      setSubmission(fullSub.data);
-      setEditingSubmission(false);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to submit assignment");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleEditSubmission = () => {
-    if (!submission) return;
-    loadAnswersIntoForm(submission);
-    setEditingSubmission(true);
-  };
-
-  const autoResize = React.useCallback((el: HTMLTextAreaElement | null) => {
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, []);
-
-  if (loading) return <div className="p-4 sm:p-6 md:p-10 text-white text-center">Loading assignment...</div>;
-  if (!assignment) return <div className="p-4 sm:p-6 md:p-10 text-white text-center">Assignment not found</div>;
-
-  const isReadOnly = submission?.status !== "in_progress" && !(submission?.status === "submitted" && editingSubmission);
-
+  // ── Submitted: the answers, and marks once graded ──
+  const canEdit = submission?.status === "submitted" && !pastDue;
   return (
-    <div className="p-4 sm:p-6 md:p-10 h-full overflow-y-auto custom-scrollbar w-full">
-      <button
-        onClick={() => router.back()}
-        className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-6 transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" /> Back
-      </button>
+    <div className="h-full overflow-y-auto custom-scrollbar bg-[#050505]">
+      <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
+        <button onClick={() => router.back()} className="mb-6 flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-white">
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
 
-      <div className="w-full bg-[#0b0e14] border border-white/10 rounded-2xl p-5 sm:p-8">
-        <div className="pb-6 mb-6 border-b border-white/10 text-center">
-          <h2 className="text-2xl md:text-3xl font-bold text-white tracking-tight">{assignment.title}</h2>
-          {assignment.instructions && <p className="text-gray-400 text-sm mt-2">{assignment.instructions}</p>}
-        </div>
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-orange-400">Assignment</p>
+        <h1 className="mt-1.5 break-words text-2xl font-bold tracking-tight text-white sm:text-3xl">{assignment.title}</h1>
 
-        {(submission?.status === "submitted" || submission?.status === "graded" || submission?.status === "evaluating") && !editingSubmission && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
-            <div className="bg-[#161b28] border border-white/10 rounded-lg p-4">
-              <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide mb-1.5">Submitted On</p>
-              <p className="text-sm font-semibold text-white">{submission.submittedAt ? formatDateTime(submission.submittedAt) : "—"}</p>
-              {submission.isLate && <p className="text-xs text-amber-400 mt-0.5">Late submission</p>}
+        <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 border-y border-white/10 py-5 sm:grid-cols-3">
+          <div>
+            <dt className="text-xs text-zinc-500">Submitted</dt>
+            <dd className="mt-0.5 text-sm font-semibold text-white">{submission?.submittedAt ? formatDateTime(submission.submittedAt) : "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-zinc-500">Due</dt>
+            <dd className="mt-0.5 text-sm font-semibold text-white">{assignment.dueDate ? formatDateTime(assignment.dueDate) : "No due date"}</dd>
+          </div>
+          {submission?.status === "graded" && (
+            <div>
+              <dt className="text-xs text-zinc-500">Your marks</dt>
+              <dd className="mt-0.5 text-sm font-semibold text-emerald-400">
+                {submission.totalMarksAwarded}/{assignment.totalMarks}
+              </dd>
             </div>
-            {submission.status === "graded" && (
-              <div className="bg-[#161b28] border border-white/10 rounded-lg p-4">
-                <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide mb-1.5">Your Marks</p>
-                <p className="text-sm font-semibold text-emerald-400">{submission.totalMarksAwarded}/{assignment.totalMarks}</p>
-              </div>
+          )}
+        </dl>
+
+        {submission?.status === "evaluating" && (
+          <p className="mt-5 flex items-start gap-2 text-sm text-orange-300">
+            <Clock className="mt-0.5 h-4 w-4 shrink-0" /> Your written answers are being graded. Check back in a few moments.
+          </p>
+        )}
+        {submission?.status === "submitted" && (
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="flex items-center gap-2 text-sm font-semibold text-emerald-400">
+              <CheckCircle2 className="h-4 w-4 shrink-0" /> Submitted
+            </p>
+            {canEdit && (
+              <Button onClick={() => setEditing(true)} className="bg-orange-600 font-semibold text-white hover:bg-orange-700">
+                Edit submission
+              </Button>
             )}
           </div>
         )}
+        {submission?.status === "graded" && submission.overallFeedback && <p className="mt-5 text-sm text-gray-300">{submission.overallFeedback}</p>}
 
-        <div className="text-center mb-8">
-          {submission && submission.status === "graded" && !editingSubmission && submission.overallFeedback && (
-            <p className="text-gray-300 text-sm">{submission.overallFeedback}</p>
-          )}
-
-          {submission && submission.status === "submitted" && !editingSubmission && (
-            <div className="mt-4 p-4 rounded-lg bg-[#18181b]merald-600/10 border border-emerald-500/20 flex items-center justify-between gap-3 text-left">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
-                <div>
-                  <p className="text-emerald-400 font-semibold text-sm">
-                    Submitted
-                    {submission.isLate && " (Late)"}
-                  </p>
-                </div>
-              </div>
-              {canEditSubmission && (
-                <Button variant="ghost" className="text-orange-400 hover:text-orange-300 shrink-0" onClick={handleEditSubmission}>
-                  Edit Submission
-                </Button>
-              )}
-            </div>
-          )}
-
-          {submission && submission.status === "evaluating" && (
-            <div className="mt-4 p-4 rounded-lg bg-orange-600/10 border border-orange-500/30 flex items-center gap-3 text-left animate-pulse">
-              <Clock className="h-5 w-5 text-orange-400 shrink-0" />
-              <div>
-                <p className="text-orange-400 font-semibold text-sm">
-                  Evaluating Submission
-                </p>
-                <p className="text-gray-400 text-xs mt-0.5">
-                  The AI is currently evaluating your descriptive answers in the background. Refresh in a few moments.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-6">
+        <ol className="mt-8 space-y-6">
           {questions.map((q, idx) => {
             const answer = submission?.answers?.find((a) => a.questionId === q.id);
             return (
-              <div key={q.id}>
-                <div className="flex items-start justify-between gap-4 mb-3">
-                  <p className="text-white text-base font-medium leading-relaxed">
-                    <span className="font-bold">Q{idx + 1}:</span> {q.description}
-                  </p>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-orange-500/10 text-orange-400 border border-orange-500/30 shrink-0 whitespace-nowrap">
-                      {q.marks} marks
-                    </span>
-                  </div>
+              <li key={q.id} className="border-b border-white/10 pb-6">
+                <div className="mb-3 flex items-start justify-between gap-4">
+                  <QuestionText label={`Q${idx + 1}.`} description={q.description} blocks={q.contentBlocks} className="text-base font-medium leading-relaxed text-white" />
+                  <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-orange-400">{q.marks} marks</span>
                 </div>
-
                 {q.type === "mcq" ? (
-                  <div className="flex flex-col gap-2">
+                  <ul className="space-y-1.5">
                     {q.options.map((o) => {
-                      const isSelected = isReadOnly ? answer?.options?.includes(o.id) : selectedOptions[q.id] === o.id;
+                      const chosen = answer?.options?.includes(o.id);
                       return (
-                        <button
-                          key={o.id}
-                          type="button"
-                          disabled={isReadOnly}
-                          onClick={() => handleSelectOption(q, o.id)}
-                          className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border text-left text-sm transition-all ${
-                            isSelected ? "bg-orange-500/20 border-orange-500/50 text-sky-200 font-medium" : "bg-[#0f0f11] border-white/10 text-white/80 hover:bg-white/5"
-                          } ${isReadOnly ? "cursor-default" : "cursor-pointer"}`}
-                        >
-                          <span className={`h-4 w-4 rounded-full border flex items-center justify-center shrink-0 ${isSelected ? "border-blue-400 bg-orange-600" : "border-gray-500"}`}>
-                            {isSelected && <Check className="h-3 w-3 text-white" />}
-                          </span>
-                          {o.value}
-                        </button>
+                        <li key={o.id} className={chosen ? "text-sm font-semibold text-orange-200" : "text-sm text-gray-400"}>
+                          {chosen ? "● " : "○ "}
+                          <OptionValue value={o.value} isCode={o.isCode} size="compact" />
+                        </li>
                       );
                     })}
-                  </div>
+                  </ul>
                 ) : (
-                  <textarea
-                    ref={autoResize}
-                    disabled={isReadOnly}
-                    value={isReadOnly ? (answer?.textAnswer || "") : (textAnswers[q.id] || "")}
-                    onChange={(e) => {
-                      setTextAnswers((prev) => ({ ...prev, [q.id]: e.target.value }));
-                      autoResize(e.target);
-                    }}
-                    onBlur={() => handleTextBlur(q)}
-                    rows={8}
-                    placeholder="Write your answer here..."
-                    className="w-full bg-[#0f0f11] border border-white/10 rounded-lg px-5 py-4 text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-white/30 transition-all text-base leading-relaxed resize-none overflow-hidden min-h-[260px] disabled:opacity-70"
-                  />
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-300">{answer?.textAnswer || <span className="italic text-gray-500">No answer</span>}</p>
                 )}
-
-                 
-                {isReadOnly && answer?.marksAwarded !== null && answer?.marksAwarded !== undefined && (
-                  <p className="text-xs text-emerald-400 font-semibold mt-2">Marks: {answer.marksAwarded}/{q.marks}</p>
+                {answer?.marksAwarded !== null && answer?.marksAwarded !== undefined && submission?.status === "graded" && (
+                  <p className="mt-2 text-xs font-semibold text-emerald-400">
+                    Marks: {answer.marksAwarded}/{q.marks}
+                  </p>
                 )}
-                {isReadOnly && answer?.feedback && <p className="text-xs text-gray-400 italic mt-1">{answer.feedback}</p>}
-              </div>
+                {answer?.feedback && <p className="mt-1 text-xs italic text-gray-400">{answer.feedback}</p>}
+              </li>
             );
           })}
-        </div>
+        </ol>
+      </div>
+    </div>
+  );
+}
 
-        {!isReadOnly && (
-          <div className="flex justify-end gap-2 mt-8">
-            {editingSubmission && (
-              <Button
-                variant="ghost"
-                className="text-gray-300 hover:text-white"
-                onClick={() => {
-                  setEditingSubmission(false);
-                  if (submission) loadAnswersIntoForm(submission);
-                }}
-              >
-                Cancel
-              </Button>
-            )}
-            <Button className="bg-[#18181b]merald-600 hover:bg-[#18181b]merald-700 text-white" onClick={handleSubmitAssignment} disabled={submitting}>
-              {submitting ? "Saving..." : editingSubmission ? "Save Changes" : "Submit Assignment"}
-            </Button>
-          </div>
-        )}
+function CenteredMessage({ icon, title, message, detail, onBack }: { icon: React.ReactNode; title: string; message?: string; detail?: string; onBack: () => void }) {
+  return (
+    <div className="flex h-full items-center justify-center bg-[#050505] px-4">
+      <div className="w-full max-w-md space-y-4 text-center">
+        <div className="flex justify-center">{icon}</div>
+        <h1 className="break-words text-xl font-bold text-white">{title}</h1>
+        {message && <p className="text-sm text-gray-300">{message}</p>}
+        {detail && <p className="text-xs text-gray-500">{detail}</p>}
+        <Button variant="ghost" onClick={onBack} className="text-gray-300 hover:bg-white/5 hover:text-white">
+          <ArrowLeft className="mr-1.5 h-4 w-4" /> Back
+        </Button>
       </div>
     </div>
   );

@@ -5,12 +5,10 @@ import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { DateTimeInput } from "@/components/DateTimeInput";
-
-// The "Require Feedback Form" option is hidden for now. Set this to true to show it again; nothing else needs to change.
-const SHOW_FEEDBACK_OPTION = false;
 
 export type ExamDetails = {
   title: string;
@@ -19,7 +17,6 @@ export type ExamDetails = {
   startTime: string;
   endTime: string;
   instructions: string[];
-  requireFeedback: boolean;
 };
 
 export const EMPTY_EXAM_DETAILS: ExamDetails = {
@@ -29,7 +26,6 @@ export const EMPTY_EXAM_DETAILS: ExamDetails = {
   startTime: "",
   endTime: "",
   instructions: [""],
-  requireFeedback: false,
 };
 
 export function scheduledDurationMinutes(startTime: string, endTime: string): number {
@@ -63,7 +59,6 @@ export function examDetailsPayload(details: ExamDetails): Record<string, unknown
     title: details.title.trim() || PLACEHOLDER_EXAM_TITLE,
     type: details.type,
     instructions: details.instructions.filter((i) => i.trim() !== ""),
-    requireFeedback: details.requireFeedback,
   };
   if (details.type === "ON_DEMAND" && Number(details.duration)) payload.duration = parseInt(details.duration);
   if (details.startTime) payload.startTime = new Date(details.startTime).toISOString();
@@ -72,11 +67,11 @@ export function examDetailsPayload(details: ExamDetails): Record<string, unknown
 }
 
 const inputClass = "text-white placeholder:text-zinc-500 h-11";
-const labelClass = "text-sm font-semibold text-gray-300";
+const labelClass = "text-sm font-semibold text-gray-200";
 
 const EXAM_TYPES: { value: ExamDetails["type"]; label: string }[] = [
-  { value: "SCHEDULED", label: "Scheduled (Fixed Time)" },
-  { value: "ON_DEMAND", label: "On-Demand (Flexible)" },
+  { value: "SCHEDULED", label: "Fixed Time" },
+  { value: "ON_DEMAND", label: "Flexible" },
 ];
 
 export function ExamDetailsForm({
@@ -91,7 +86,10 @@ export function ExamDetailsForm({
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h2 className="text-lg font-bold text-white">Exam details</h2>
+        <h2 className="flex items-center gap-2 text-lg font-bold text-white">
+          <span aria-hidden className="h-4 w-1 shrink-0 rounded-full bg-orange-500" />
+          Exam details
+        </h2>
         <p className="text-xs text-gray-400 mt-0.5">Basic information students will see.</p>
       </div>
 
@@ -163,20 +161,73 @@ export function ExamDetailsForm({
           <Button
             variant="outline"
             onClick={() => onChange({ instructions: [...values.instructions, ""] })}
-            className="w-full bg-transparent border-dashed border-white/10 text-gray-400 hover:text-white hover:bg-white/5"
+            className="w-full bg-transparent border-dashed border-orange-500/30 text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
           >
             <Plus className="h-4 w-4 mr-2" /> Add Instruction
           </Button>
         </div>
       </div>
 
-      {SHOW_FEEDBACK_OPTION && (
-        <div className="flex items-center justify-between gap-4 p-4 bg-[#050505] border border-white/10 rounded-lg">
-          <div className="space-y-0.5">
-            <label className={labelClass}>Require Feedback Form</label>
-            <p className="text-xs text-gray-500">Ask students for feedback after they submit the exam.</p>
-          </div>
-          <Switch checked={values.requireFeedback} onCheckedChange={(v) => onChange({ requireFeedback: v })} />
+    </div>
+  );
+}
+
+/**
+ * "Evaluate written answers with AI". On: the AI marks written answers when students submit, and the teacher can change any
+ * mark. Off: the teacher grades them. MCQs are marked automatically either way, by comparing with the correct option.
+ */
+export function AiEvaluationToggle({ value, onChange }: { value: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+      <div className="min-w-0 space-y-0.5">
+        <label htmlFor="ai-evaluation" className={labelClass}>
+          Evaluate written answers with AI
+        </label>
+        <p className="text-xs text-gray-400">
+          {value
+            ? "The AI marks written answers when students submit. You can change any mark afterwards."
+            : "You'll grade written answers yourself from the results page. MCQs are still marked automatically."}
+        </p>
+      </div>
+      <Switch id="ai-evaluation" checked={value} onCheckedChange={(checked) => onChange(!!checked)} />
+    </div>
+  );
+}
+
+/**
+ * The switch above, plus (while it is on) the teacher's marking scheme in their own words: the grading guide of each
+ * written question is prepared from it. Shown on the publish step of exams and assignments that have written questions.
+ */
+export function AiEvaluationSettings({
+  value,
+  onChange,
+  scheme,
+  onSchemeChange,
+}: {
+  value: boolean;
+  onChange: (value: boolean) => void;
+  scheme: string;
+  onSchemeChange: (scheme: string) => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <AiEvaluationToggle value={value} onChange={onChange} />
+      {value && (
+        <div className="space-y-2">
+          <label htmlFor="evaluation-scheme" className="text-sm font-semibold text-gray-300">How should students answer, and how will you evaluate?</label>
+          <p className="text-xs text-gray-500">
+            Optional. For example: &quot;For 5 marks, a definition, an explanation and one example. Don&apos;t deduct for spelling.&quot; The grading guide for each written question is
+            prepared from this after you save. Leave blank to use the standard guide.
+          </p>
+          <Textarea
+            id="evaluation-scheme"
+            value={scheme}
+            onChange={(e) => onSchemeChange(e.target.value)}
+            maxLength={4000}
+            rows={4}
+            placeholder="Describe how you check answers…"
+            className="text-white placeholder:text-zinc-500"
+          />
         </div>
       )}
     </div>

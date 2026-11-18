@@ -2,7 +2,7 @@
 
 import React, { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Layers, Plus, ClipboardList, ClipboardCheck, Settings, Search, ChevronLeft, ChevronRight, Info, Clock, Pencil } from "lucide-react";
+import { ArrowLeft, Layers, Plus, ClipboardList, ClipboardCheck, Settings, Search, ChevronLeft, ChevronRight, Info, Clock, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -13,6 +13,7 @@ import {
   listMySeriesService,
   updateSeriesService,
   deleteSeriesService,
+  deleteAssignmentService,
   createAssignmentService,
   listMyAssignmentsService,
 } from "@/app/teacher/assignments/assignment.service";
@@ -223,6 +224,19 @@ function AssignmentsPageContent() {
     }
   };
 
+  // Deletes one assignment with its questions and students' submissions, then refreshes whatever list is showing.
+  const handleDeleteAssignment = async (assignmentId: string, title: string) => {
+    if (!confirm(`Delete assignment "${title}"? This permanently deletes its questions and students' submissions. This cannot be undone.`)) return;
+    try {
+      await deleteAssignmentService(assignmentId);
+      toast.success("Assignment deleted");
+      loadOverview();
+      if (view === "standalone") loadStandalone(standalonePage, debouncedStandaloneSearch, standaloneStatus);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to delete assignment");
+    }
+  };
+
   const openSeriesSettings = () => {
     if (!selectedSeries) return;
     setSeriesNameInput(selectedSeries.title);
@@ -391,11 +405,11 @@ function AssignmentsPageContent() {
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-600/10 text-emerald-400 border border-emerald-500/20">
             {a.totalMarks} marks
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
               variant="outline"
@@ -416,6 +430,17 @@ function AssignmentsPageContent() {
               }}
             >
               <ClipboardCheck className="mr-1 h-3.5 w-3.5" /> Submissions
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="bg-transparent border-red-500/20 text-red-400 hover:bg-red-500/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteAssignment(a.id, a.title);
+              }}
+            >
+              <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
             </Button>
           </div>
         </div>

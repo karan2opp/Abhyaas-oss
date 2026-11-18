@@ -2,13 +2,13 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, BookOpen, Loader2, UploadCloud } from "lucide-react";
+import { ArrowRight, BookOpen, Loader2, UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getBook, listBooks, uploadBook, type BookSummary, type BookToc } from "@/services/books.service";
 import { AiExamGeneratorForm, type AiGeneratorStage, type WorkspaceParts } from "./QuestionBuilder";
-import { StatTile } from "./workspace";
+import { StatTile, WizardNavButtons } from "./workspace";
 
 // Step numbers within STEPS.source: Details, Book, Topics, Preferences, Subtopics, Review, Publish.
 const STAGE_STEP: Record<AiGeneratorStage, number> = { config: 2, intent: 3, blueprint: 4, generating: 4 };
@@ -235,9 +235,7 @@ export function SourceFlow({
 
   const footer = (
     <>
-      <Button variant="ghost" onClick={onBack} className="text-gray-400 hover:text-white h-10 px-4 text-sm font-semibold">
-        <ArrowLeft className="h-4 w-4 mr-1.5" /> Previous
-      </Button>
+      <WizardNavButtons onPrevious={onBack} />
       <Button onClick={handleNext} disabled={opening || !selected || selected.status !== "completed"} className={primaryButton}>
         {opening ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Next <ArrowRight className="h-4 w-4 ml-2" /></>}
       </Button>

@@ -17,3 +17,4 @@ export * from "../../module/plans/user_plan.schema.js";
 export * from "../../module/plans/usage.schema.js";
 export * from "../../module/payments/payment_order.schema.js";
 export * from "../../module/ai_keys/ai_key.schema.js";
+export * from "../../module/ai_usage/ai_usage.schema.js";

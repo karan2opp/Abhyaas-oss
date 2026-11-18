@@ -10,6 +10,8 @@ import {
     generateFromDocumentsHandler,
     listTopicsHandler,
     searchQuestionBankHandler,
+    getPaperTopicsHandler,
+    pickQuestionsHandler,
 } from "./question_bank.controller.js";
 
 const pdfUpload = multer({
@@ -71,6 +73,20 @@ router.post(
     authenticate,
     authorize("teacher"),
     generateFromDocumentsHandler
+);
+
+router.get(
+    "/documents/:documentId/topics",
+    authenticate,
+    authorize("teacher"),
+    getPaperTopicsHandler
+);
+
+router.post(
+    "/pick",
+    authenticate,
+    authorize("teacher"),
+    pickQuestionsHandler
 );
 
 router.post(

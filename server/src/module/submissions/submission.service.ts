@@ -10,6 +10,7 @@ import type { Requester } from "../../common/permissions/index.js";
 import { assertQuota, recordUsage, remainingQuota } from "../plans/quota.service.js";
 import { runAsAiUser } from "../../common/agent/ai_context.js";
 import { hasUsableAiKey, toAiKeyApiError } from "../ai_keys/ai_key.service.js";
+import { bindUsageContext } from "../../common/agent/usage_context.js";
 
 // ── Whether a teacher has staff-level access to an exam (only its creator) ───
 const hasStaffAccessToExam = async (requester: Requester, exam: typeof exams.$inferSelect): Promise<boolean> => {
@@ -61,6 +62,9 @@ const NOT_GRADED_NOTE = "This answer was not graded by AI because the teacher's 
 const NOT_GRADED_KEY_NOTE = "This answer was not graded by AI because the teacher's AI key isn't working right now. Your teacher will grade it.";
 // Same, when grading kept failing for another reason.
 const NOT_GRADED_FAILED_NOTE = "This answer could not be graded automatically. Your teacher will grade it.";
+
+// When the teacher has turned AI evaluation off for the exam.
+const TEACHER_GRADES_NOTE = "Your teacher will grade this answer.";
 
 const leaveForTeacher = async (textAnswers: TextAnswer[], note: string) => {
     for (const answer of textAnswers) {
@@ -153,6 +157,19 @@ const buildTextAnswersForEvaluation = async (submissionId: string, options: { sk
     return textAnswersToEvaluate;
 };
 
+// Whether the teacher wants written answers graded by AI for this exam ("Evaluate with AI" on the publish step).
+const aiEvaluationIsOn = async (examId: string): Promise<boolean> => {
+    const [exam] = await db.select({ aiEvaluation: exams.aiEvaluation }).from(exams).where(eq(exams.id, examId));
+    return exam?.aiEvaluation !== false;
+};
+
+// With AI evaluation off: an empty written answer gets 0 (no AI involved, as always), every other one waits for the teacher.
+const leaveWrittenAnswersForTeacher = async (submissionId: string) => {
+    const pending = await buildTextAnswersForEvaluation(submissionId, { skipAiGraded: true });
+    await gradeAnswers(pending.filter((a) => isBlankAnswer(a.studentAnswer)), "marks_and_feedback", saveExamAnswer);
+    await leaveForTeacher(pending.filter((a) => !isBlankAnswer(a.studentAnswer)), TEACHER_GRADES_NOTE);
+};
+
 // Whether the exam's grading guides (rubrics) are still being written. Answers are not graded until they are ready.
 const rubricsArePending = async (examId: string): Promise<boolean> => {
     const [exam] = await db.select({ rubricStatus: exams.rubricStatus }).from(exams).where(eq(exams.id, examId));
@@ -177,9 +194,18 @@ const finishSubmission = async (submissionId: string) => {
 export const evaluateDescriptiveAnswers = async (submissionId: string, mode?: string): Promise<void> => {
     const [submission] = await db.select().from(submissions).where(eq(submissions.id, submissionId));
     if (!submission) throw ApiError.notFound("Submission not found");
+    // The AI calls below are logged against this exam.
+    bindUsageContext({ examId: submission.examId });
 
     // The exam's grading guides are still being written: leave the submission "evaluating". It is queued again as soon as
     // they are ready (see releaseWaitingEvaluations), and the recovery sweep would also find it.
+    // AI evaluation was turned off after this submission was queued: the teacher grades what is left.
+    if (!(await aiEvaluationIsOn(submission.examId))) {
+        await leaveWrittenAnswersForTeacher(submissionId);
+        await finishSubmission(submissionId);
+        return;
+    }
+
     if (await rubricsArePending(submission.examId)) return;
 
     const textAnswersToEvaluate = await buildTextAnswersForEvaluation(submissionId, { skipAiGraded: true });
@@ -296,7 +322,10 @@ const submitExam = async (submissionId: string, studentId: string, mode: string)
         }
     }
 
-    const queueEvaluation = hasDescriptive;
+    // Written answers go to the AI only when the teacher left AI evaluation on. Otherwise they wait for the teacher and the
+    // submission is done now.
+    const queueEvaluation = hasDescriptive && (await aiEvaluationIsOn(submission.examId));
+    if (hasDescriptive && !queueEvaluation) await leaveWrittenAnswersForTeacher(submissionId);
 
     // --- Set evaluating (AI grading queued) or submitted (nothing to grade) ---
     const [updated] = await db.update(submissions)
@@ -385,6 +414,11 @@ const evaluateSubmissionWithAI = async (submissionId: string, data: EvaluateWith
     if (submission.status === "inprogress") throw ApiError.badRequest("Student has not submitted this exam yet");
 
     await assertCanManageExamSubmissions(requester, submission.examId);
+    bindUsageContext({ examId: submission.examId });
+
+    if (!(await aiEvaluationIsOn(submission.examId))) {
+        throw ApiError.badRequest("AI evaluation is turned off for this exam. Turn it on in the exam's publish settings to use it.");
+    }
 
     if (await rubricsArePending(submission.examId)) {
         throw new ApiError(409, "The grading guides for this exam are still being written. Try AI grading again in a minute.");

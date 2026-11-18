@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import { env } from "../../env.js";
 import { currentAiUserId } from "./ai_context.js";
 import { getUserOpenAiKey } from "../../module/ai_keys/ai_key.service.js";
+import { recordAiUsage, type RawUsage } from "../../module/ai_usage/ai_usage.service.js";
 
 dotenv.config();
 
@@ -60,12 +61,74 @@ const getMistral = async () => {
 export const toolCallParams = (model: string): { reasoning_effort?: "none" } =>
     /^gpt-5\.\d/i.test(model) ? { reasoning_effort: "none" } : {};
 
-export const getClientForModel = async (model: string) => {
+// ── AI usage log ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// Every AI call in the app is made on a client from getClientForModel, so the client is wrapped here: each call that
+// goes through it is written to the usage log (tokens, cost, who it was for) without any call site having to do it.
+
+/** Wraps the function at `path` (e.g. ["chat", "completions", "create"]) inside `obj`, leaving everything else untouched. */
+const wrapAt = (obj: any, path: string[], wrap: (call: (...args: any[]) => any) => (...args: any[]) => any): any =>
+    new Proxy(obj, {
+        get(target, prop) {
+            const value = Reflect.get(target, prop);
+            if (prop === path[0]) {
+                if (path.length > 1) return wrapAt(value, path.slice(1), wrap);
+                return typeof value === "function" ? wrap(value.bind(target)) : value;
+            }
+            return typeof value === "function" ? value.bind(target) : value;
+        },
+    });
+
+// Streamed replies only report their usage when asked to, in the last chunk. The chunks are passed on unchanged.
+async function* watchStream(stream: AsyncIterable<any>, finish: (usage: RawUsage | undefined, error?: unknown) => void) {
+    let usage: RawUsage | undefined;
+    try {
+        for await (const chunk of stream) {
+            if (chunk?.usage) usage = chunk.usage;
+            yield chunk;
+        }
+        finish(usage);
+    } catch (err) {
+        finish(usage, err);
+        throw err;
+    }
+}
+
+export const withUsageLog = (client: any, model: string, purpose: string) => {
+    const track = (call: (...args: any[]) => any) => (params: any, ...rest: any[]) => {
+        const started = Date.now();
+        const streaming = params?.stream === true;
+        const sent = streaming ? { ...params, stream_options: { include_usage: true, ...(params.stream_options ?? {}) } } : params;
+        const log = (usage: RawUsage | undefined, error?: unknown) =>
+            void recordAiUsage({
+                model: params?.model ?? model,
+                purpose,
+                usage,
+                success: !error,
+                error: error ? (error instanceof Error ? error.message : String(error)) : undefined,
+                durationMs: Date.now() - started,
+            });
+        return Promise.resolve(call(sent, ...rest)).then(
+            (result: any) => (streaming ? watchStream(result, log) : (log(result?.usage), result)),
+            (error: unknown) => {
+                log(undefined, error);
+                throw error;
+            }
+        );
+    };
+    let wrapped = wrapAt(client, ["chat", "completions", "create"], track);
+    wrapped = wrapAt(wrapped, ["embeddings", "create"], track);
+    wrapped = wrapAt(wrapped, ["audio", "transcriptions", "create"], track);
+    return wrapped;
+};
+
+/**
+ * The client for a model. `purpose` says what the call is for ("question_generation", "grading", ...); it is written to the
+ * usage log with the tokens and cost of every call made on the returned client.
+ */
+export const getClientForModel = async (model: string, purpose = "other") => {
     const name = model.toLowerCase();
     // "ministral" (Mistral's small-model family, e.g. ministral-14b-2512)
     // does NOT contain "mistral" as a substring — check both explicitly.
-    if (name.includes("mistral") || name.includes("ministral")) {
-        return getMistral();
-    }
-    return getOpenAI();
+    const client = name.includes("mistral") || name.includes("ministral") ? await getMistral() : await getOpenAI();
+    return withUsageLog(client, model, purpose);
 };

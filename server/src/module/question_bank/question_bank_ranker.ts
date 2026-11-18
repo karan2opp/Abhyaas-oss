@@ -37,7 +37,7 @@ export async function rankCandidatesForGoal(input: {
 }): Promise<string[]> {
     const original = input.candidates.map((c) => c.id);
     try {
-        const client = await getClientForModel(env.GENERATION_MODEL);
+        const client = await getClientForModel(env.GENERATION_MODEL, "question_bank_rank");
         const response = await client.chat.completions.create({
             model: env.GENERATION_MODEL,
             messages: [

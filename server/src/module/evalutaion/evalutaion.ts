@@ -122,7 +122,7 @@ const evaluateSingleAnswer = async (
     retries = 2
 ): Promise<EvaluationOutcome> => {
     const modelToUse = env.EVALUATION_MODEL;
-    const client = await getClientForModel(modelToUse);
+    const client = await getClientForModel(modelToUse, "grading");
 
     const inputObj: any = {
         question_text: answer.question,

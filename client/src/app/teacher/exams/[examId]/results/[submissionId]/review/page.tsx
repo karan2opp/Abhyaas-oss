@@ -376,8 +376,8 @@ export default function SubmissionReviewPage() {
                     <span className="border border-white/10 bg-white/5 px-2.5 py-1 rounded-md text-gray-300 text-[10px] font-bold">Question {currentIndex + 1}</span>
                     {selectedAnswer?.evaluatedBy && (
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${selectedAnswer.evaluatedBy === "teacher" ? "bg-[#18181b]merald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-orange-500/10 text-orange-400 border border-orange-500/30"}`}>
-                        {selectedAnswer.evaluatedBy === "teacher" ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
-                        Graded by {selectedAnswer.evaluatedBy === "teacher" ? "you" : "AI"}
+                        {selectedAnswer.evaluatedBy === "teacher" ? <User className="h-3 w-3" /> : selectedQuestion?.type === "mcq" ? null : <Bot className="h-3 w-3" />}
+                        {selectedAnswer.evaluatedBy === "teacher" ? "Graded by you" : selectedQuestion?.type === "mcq" ? "Marked automatically" : "Graded by AI"}
                       </span>
                     )}
                   </div>
@@ -388,7 +388,7 @@ export default function SubmissionReviewPage() {
                       components={{
                         pre: ({ children }: any) => {
                           return (
-                            <div className="my-5 rounded-xl overflow-hidden border border-white/10 bg-[#09090b] shadow-2xl">
+                            <div className="my-5 rounded-xl overflow-hidden border border-white/10 bg-[#09090b] keep-dark shadow-2xl">
                               <div className="p-5 overflow-x-auto custom-scrollbar font-normal">
                                 {children}
                               </div>
@@ -560,16 +560,18 @@ export default function SubmissionReviewPage() {
                 </Button>
               </div>
               <div className="flex flex-wrap justify-end gap-2">
-                <Button
-                  variant="outline"
-                  className="bg-transparent border-white/10 text-white hover:bg-white/5 text-xs h-10"
-                  onClick={handleEvaluateWithAi}
-                  disabled={evaluatingAi || savingGrade}
-                  title="Re-runs AI evaluation for any descriptive answer you haven't manually graded yet"
-                >
-                  <Bot className="mr-1.5 h-3.5 w-3.5" />
-                  {evaluatingAi ? "Evaluating..." : "Evaluate with AI"}
-                </Button>
+                {exam?.aiEvaluation !== false && (
+                  <Button
+                    variant="outline"
+                    className="bg-transparent border-white/10 text-white hover:bg-white/5 text-xs h-10"
+                    onClick={handleEvaluateWithAi}
+                    disabled={evaluatingAi || savingGrade}
+                    title="Re-runs AI evaluation for any descriptive answer you haven't manually graded yet"
+                  >
+                    <Bot className="mr-1.5 h-3.5 w-3.5" />
+                    {evaluatingAi ? "Evaluating..." : "Evaluate with AI"}
+                  </Button>
+                )}
                 <Button
                   className="bg-[#18181b]merald-600 hover:bg-[#18181b]merald-700 text-white text-sm font-semibold h-10 px-5"
                   onClick={handleSaveGrade}

@@ -16,7 +16,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 export const runGuardrail = async (studentAnswer: string): Promise<{ safe: boolean; reason: string | null }> => {
   const modelToUse = env.GUARDRAIL_MODEL;
-  const client = await getClientForModel(modelToUse);
+  const client = await getClientForModel(modelToUse, "grading_guardrail");
 
   let attempt = 0;
   while (true) {

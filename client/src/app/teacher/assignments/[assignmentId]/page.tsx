@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { OptionValue, QuestionText, type ContentBlock } from "@/components/QuestionContentBlocks";
 import {
   getAssignmentByIdService,
   updateAssignmentService,
@@ -28,6 +29,7 @@ import {
 import { listBooks, BookSummary as Book } from "@/services/books.service";
 import { generateTopicQuestions } from "@/services/generationAgents.service";
 import { DateTimeInput } from "@/components/DateTimeInput";
+import { AiEvaluationSettings } from "@/app/teacher/exams/new/ExamDetailsForm";
 
 interface Assignment {
   id: string;
@@ -40,12 +42,15 @@ interface Assignment {
   seriesId: string | null;
   sequenceOrder: number | null;
   dayGap: number | null;
+  aiEvaluation?: boolean;
+  evaluationScheme?: string | null;
 }
 
 interface Option {
   id?: string;
   value: string;
   isCorrect: boolean;
+  isCode?: boolean;
 }
 
 interface Question {
@@ -54,6 +59,7 @@ interface Question {
   description: string;
   marks: number;
   modelAnswer: string | null;
+  contentBlocks?: ContentBlock[] | null;
   options: Option[];
 }
 
@@ -83,6 +89,8 @@ export default function AssignmentDetailPage() {
   const [editTitle, setEditTitle] = useState("");
   const [editStartDate, setEditStartDate] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
+  const [editAiEvaluation, setEditAiEvaluation] = useState(true);
+  const [editEvaluationScheme, setEditEvaluationScheme] = useState("");
   const [, setEditTotalMarks] = useState("0");
   const [savingAssignment, setSavingAssignment] = useState(false);
 
@@ -319,12 +327,17 @@ export default function AssignmentDetailPage() {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
+  // The AI grading switch and marking scheme only matter when there are written questions.
+  const hasWrittenQuestions = questions.some((q) => q.type === "descriptive");
+
   const openEditAssignment = () => {
     if (!assignment) return;
     setEditTitle(assignment.title);
     setEditStartDate(toDatetimeLocal(assignment.startDate));
     setEditDueDate(toDatetimeLocal(assignment.dueDate));
     setEditTotalMarks(String(assignment.totalMarks));
+    setEditAiEvaluation(assignment.aiEvaluation !== false);
+    setEditEvaluationScheme(assignment.evaluationScheme ?? "");
     setEditDialogOpen(true);
   };
 
@@ -339,6 +352,10 @@ export default function AssignmentDetailPage() {
       if (!assignment?.seriesId || assignment.dayGap === null) {
         payload.startDate = editStartDate ? new Date(editStartDate).toISOString() : null;
         payload.dueDate = editDueDate ? new Date(editDueDate).toISOString() : null;
+      }
+      if (hasWrittenQuestions) {
+        payload.aiEvaluation = editAiEvaluation;
+        payload.evaluationScheme = editAiEvaluation ? editEvaluationScheme.trim() || null : (assignment?.evaluationScheme ?? null);
       }
       await updateAssignmentService(assignmentId, payload);
       toast.success("Assignment updated");
@@ -448,13 +465,13 @@ export default function AssignmentDetailPage() {
                       <span className="px-2 py-0.5 rounded bg-white/5 text-[10px] font-bold text-gray-400 uppercase">{q.type}</span>
                       <span className="text-xs text-emerald-400 font-semibold">{q.marks} marks</span>
                     </div>
-                    <p className="text-white text-sm">{q.description}</p>
+                    <QuestionText description={q.description} blocks={q.contentBlocks} className="text-white text-sm" />
                     {q.type === "mcq" && (
                       <div className="mt-2 flex flex-col gap-1">
                         {q.options.map((o, i) => (
                           <div key={o.id || i} className={`text-xs px-2 py-1 rounded ${o.isCorrect ? "bg-emerald-500/15 text-emerald-200 border border-emerald-500/30" : "bg-zinc-800 text-white/70 border border-zinc-700"}`}>
                             {o.isCorrect && <Check className="inline h-3 w-3 mr-1" />}
-                            {o.value}
+                            <OptionValue value={o.value} isCode={o.isCode} size="compact" />
                           </div>
                         ))}
                       </div>
@@ -595,7 +612,7 @@ export default function AssignmentDetailPage() {
             <DialogTitle className="text-white text-xl font-bold">Edit Assignment</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-300">Title</label>
               <input
@@ -629,6 +646,10 @@ export default function AssignmentDetailPage() {
                   />
                 </div>
               </div>
+            )}
+
+            {hasWrittenQuestions && (
+              <AiEvaluationSettings value={editAiEvaluation} onChange={setEditAiEvaluation} scheme={editEvaluationScheme} onSchemeChange={setEditEvaluationScheme} />
             )}
           </div>
 

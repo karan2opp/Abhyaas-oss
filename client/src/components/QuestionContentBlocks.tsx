@@ -13,6 +13,7 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import { MATH_REMARK_PLUGINS, MATH_REHYPE_PLUGINS, hasMarkup } from "@/lib/markdownMath";
+import { normalizeCodeBlocks } from "@/lib/markdown";
 
 export interface ContentBlock {
   type: "code" | "table" | "list" | "image";
@@ -36,7 +37,7 @@ type Size = "large" | "compact";
 
 const SIZES = {
   large: {
-    wrap: "my-4 sm:my-6 rounded-xl sm:rounded-2xl overflow-hidden border border-white/10 bg-[#09090b] shadow-2xl font-normal",
+    wrap: "my-4 sm:my-6 rounded-xl sm:rounded-2xl overflow-hidden border border-white/10 bg-[#09090b] keep-dark shadow-2xl font-normal",
     body: "p-3 sm:p-6 overflow-x-auto custom-scrollbar",
     code: "block font-mono text-[13px] sm:text-[16px] md:text-lg leading-relaxed text-gray-300 whitespace-pre-wrap",
     inlineCode: "bg-white/[0.06] px-1.5 py-0.5 rounded text-sm sm:text-lg text-gray-300 font-mono font-normal",
@@ -46,7 +47,7 @@ const SIZES = {
     list: "text-sm sm:text-[15px] leading-relaxed",
   },
   compact: {
-    wrap: "my-3 rounded-xl overflow-hidden border border-white/10 bg-[#09090b]",
+    wrap: "my-3 rounded-xl overflow-hidden border border-white/10 bg-[#09090b] keep-dark",
     body: "p-4 overflow-x-auto custom-scrollbar font-normal",
     code: "block font-mono text-sm leading-relaxed text-gray-300 whitespace-pre-wrap",
     inlineCode: "bg-white/[0.06] px-1 py-0.5 rounded text-xs text-gray-300 font-mono",
@@ -228,5 +229,38 @@ export function OptionValue({ value, isCode, size = "large" }: { value: string; 
     >
       {value}
     </ReactMarkdown>
+  );
+}
+
+/**
+ * A question's text with its label ("Q3:") in bold, followed by its code / table / list / picture blocks, at the compact
+ * size. For the screens that list a whole assignment's questions at once. The text style comes from `className`.
+ */
+export function QuestionText({ label, description, blocks, className }: { label?: string; description: string; blocks?: ContentBlock[] | null; className?: string }) {
+  return (
+    <div className="min-w-0 flex-1">
+      <div className={className}>
+        <ReactMarkdown
+          remarkPlugins={MATH_REMARK_PLUGINS}
+          rehypePlugins={MATH_REHYPE_PLUGINS}
+          components={{
+            pre: ({ children }) => (
+              <div className="my-3 rounded-xl overflow-hidden border border-white/10 bg-[#09090b] keep-dark">
+                <div className="p-4 overflow-x-auto custom-scrollbar font-normal">{children}</div>
+              </div>
+            ),
+            code: ({ className: codeClass, children }) => (
+              <MarkdownCode className={codeClass} size="compact">
+                {children}
+              </MarkdownCode>
+            ),
+            p: ({ ...props }) => <p className="mb-1 last:mb-0" {...props} />,
+          }}
+        >
+          {normalizeCodeBlocks(label ? `**${label}** ${description}` : description)}
+        </ReactMarkdown>
+      </div>
+      <ContentBlocksView blocks={blocks} size="compact" />
+    </div>
   );
 }

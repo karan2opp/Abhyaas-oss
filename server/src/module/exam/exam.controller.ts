@@ -1,7 +1,8 @@
 import type { Request, Response } from "express";
 import { ApiResponse } from "../../common/utils/ApiResponse.js";
 import * as examService from "./exam.service.js";
-import { addTopicToExam, removeTopicFromExam } from "./exam_topics.service.js";
+import { addPaperTopicsToExam, addTopicToExam, removeTopicFromExam } from "./exam_topics.service.js";
+import { assertDocumentsReady } from "../question_bank/question_bank.controller.js";
 
 const toRequester = (req: Request) => ({
     id: req.user!.id,
@@ -65,6 +66,12 @@ export const getMyExams = async (req: Request, res: Response) => {
 export const addTopic = async (req: Request, res: Response) => {
     const result = await addTopicToExam(req.params.id as string, req.body, toRequester(req));
     return ApiResponse.ok(res, "Topic added", result);
+};
+
+// Adds questions from the past papers the exam was made from (no AI): the subtopics picked and how many of each.
+export const addTopicFromPapers = async (req: Request, res: Response) => {
+    const result = await addPaperTopicsToExam(req.params.id as string, req.body, toRequester(req), (ids) => assertDocumentsReady(ids, req));
+    return ApiResponse.ok(res, "Questions added from the papers", result);
 };
 
 export const removeTopic = async (req: Request, res: Response) => {

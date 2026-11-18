@@ -29,6 +29,25 @@ export interface QuestionBankOption {
     text: string;
 }
 
+// A paper's topics as a two-level tree: broad topics (roughly chapters, e.g. "Arrays") that each hold subtopics
+// (e.g. "Searching"). Each subtopic belongs to exactly one broad topic. A question is tagged with up to two
+// subtopics, so a question can sit under two broad topics through two different subtopics.
+// `aliases` are the tag spellings (compared ignoring capitals and spaces) that the classifier gave questions and that
+// were merged into this subtopic, so "Binary search" and "binary search algorithm" count as one.
+export interface QuestionBankSubtopic {
+    name: string;
+    aliases: string[];
+}
+
+export interface QuestionBankBroadTopic {
+    name: string;
+    subtopics: QuestionBankSubtopic[];
+}
+
+export interface QuestionBankTopicTree {
+    broadTopics: QuestionBankBroadTopic[];
+}
+
 // One row per uploaded PYQ PDF. status tracks the async Inngest pipeline
 // (extract -> chunk -> classify -> embed -> upsert) independently of the
 // HTTP request that kicked it off.
@@ -39,7 +58,14 @@ export const questionBankDocuments = pgTable("question_bank_documents", {
     fileUrl: text("file_url").notNull(),
     status: text("status").$type<"pending" | "processing" | "completed" | "failed">().default("pending").notNull(),
     totalChunks: integer("total_chunks").default(0).notNull(),
+    // How far processing has got, 0-100, and what it is doing right now ("Reading questions 16 of 50"), so the paper
+    // list can show a progress bar. Only ever goes up while a paper is processed.
+    progress: integer("progress").default(0).notNull(),
+    progressLabel: text("progress_label"),
     error: text("error"),
+    // Built once at the end of processing (see question_bank_topic_tree.ts). null for papers processed before topic
+    // trees existed, and for a paper whose grouping step has not run; those fall back to a flat list of subtopics.
+    topicTree: jsonb("topic_tree").$type<QuestionBankTopicTree>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -66,6 +92,9 @@ export const questionBankChunks = pgTable("question_bank_chunks", {
     // The answer key when the source paper prints one ("Answer: C") — stored
     // as the option label. Ground truth that can't be recovered any other way.
     correctOption: text("correct_option"),
+    // Where correctOption came from: "paper" (the paper's answer key, or printed with the question) or "ai" (no answer
+    // was given, so the model worked it out). Not shown anywhere yet; kept so the two can be told apart later.
+    answerSource: text("answer_source").$type<"paper" | "ai">(),
     subject: text("subject"),
     topics: text("topics").array(),
     description: text("description"),

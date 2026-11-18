@@ -87,7 +87,7 @@ async function callStructured<T extends z.ZodTypeAny>(
   name: string,
   stream?: StreamHooks & { holdWhenDone?: boolean }
 ): Promise<z.infer<T>> {
-  const client = await getClientForModel(env.INTENT_MODEL);
+  const client = await getClientForModel(env.INTENT_MODEL, "exam_intent");
   const MAX_ATTEMPTS = 3;
   let lastError: unknown;
 

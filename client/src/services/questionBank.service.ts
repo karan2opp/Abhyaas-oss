@@ -9,6 +9,9 @@ export interface QuestionBankDocument {
   fileUrl: string;
   status: QuestionBankDocumentStatus;
   totalChunks: number;
+  /** 0-100 while processing, with what it is doing now, e.g. "Reading questions 16 of 50". */
+  progress: number;
+  progressLabel: string | null;
   error: string | null;
   createdAt: string;
   updatedAt: string;
@@ -128,6 +131,8 @@ export interface GeneratedQuestion {
 
 export interface GeneratedTopicGroup {
   topic: string;
+  /** The exam section it was picked for, when several sections are built at once (SubtopicPick.section). */
+  section?: string;
   /** What was asked for; questions.length is what the documents actually had. */
   allocatedQuestions: number;
   questions: GeneratedQuestion[];
@@ -165,4 +170,68 @@ export async function listPaperTopics(documentIds: string[]): Promise<PaperTopic
 export async function generateQuestionsFromDocuments(input: GenerateFromDocumentsInput): Promise<GeneratedTopicGroup[]> {
   const res = await api.post("/question-bank/generate", input);
   return res.data.data.groups;
+}
+
+// ── Topic picker: a paper's broad topics -> subtopics -> how many from each ──
+
+export interface PaperSubtopic {
+  /** Sent back in a pick to name this subtopic. */
+  key: string;
+  name: string;
+  /** Questions of the requested type under this subtopic (not counting those already in the exam, when one is given). */
+  total: number;
+  /** Questions of this subtopic already in the exam. Only when the tree was asked for an exam. */
+  inExam?: number;
+}
+
+export interface PaperBroadTopic {
+  name: string;
+  /** Different questions under this broad topic (a question in two of its subtopics counts once). */
+  total: number;
+  subtopics: PaperSubtopic[];
+}
+
+export interface PaperTopicTree {
+  documentId: string;
+  /** false when the paper has not been grouped into broad topics yet, so everything is under one heading. */
+  grouped: boolean;
+  broadTopics: PaperBroadTopic[];
+  /** One entry per question: the subtopic keys it belongs to. Used to work out live counts. */
+  questions: string[][];
+}
+
+/** With `examId`, questions already in that exam are left out of the counts (and counted in `inExam`). */
+export async function getPaperTopicTree(documentId: string, questionType: QuestionType, examId?: string): Promise<PaperTopicTree> {
+  const res = await api.get(`/question-bank/documents/${documentId}/topics`, { params: { questionType, ...(examId ? { examId } : {}) } });
+  return res.data.data;
+}
+
+/** How many questions to take from one subtopic of one paper. */
+export interface SubtopicPick {
+  documentId: string;
+  subtopic: string;
+  count: number;
+  /** Which exam section the pick is for. Sections are filled from one shared pool, so a question is used only once. */
+  section?: string;
+}
+
+export interface PickShortfall {
+  section?: string;
+  documentId: string;
+  broadTopic: string;
+  subtopic: string;
+  requested: number;
+  found: number;
+  /** not_enough: the paper doesn't have that many. shared: it does, but some were needed by other picks. */
+  reason: "not_enough" | "shared";
+}
+
+export async function pickQuestionsFromPapers(input: {
+  picks: SubtopicPick[];
+  goal?: string;
+  questionType: QuestionType;
+  marks: number;
+}): Promise<{ groups: GeneratedTopicGroup[]; shortfalls: PickShortfall[] }> {
+  const res = await api.post("/question-bank/pick", input);
+  return res.data.data;
 }

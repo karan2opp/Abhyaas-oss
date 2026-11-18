@@ -195,7 +195,7 @@ export function TeacherExamPreviewModal({
                   components={{
                     pre: ({ children }) => {
                       return (
-                        <div className="my-6 rounded-2xl overflow-hidden border border-white/10 bg-[#09090b] shadow-2xl font-normal">
+                        <div className="my-6 rounded-2xl overflow-hidden border border-white/10 bg-[#09090b] keep-dark shadow-2xl font-normal">
                           <div className="p-6 overflow-x-auto custom-scrollbar">
                             {children}
                           </div>

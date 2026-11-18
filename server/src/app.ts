@@ -27,6 +27,7 @@ import { rubricFunctions } from "./module/rubrics/inngest/functions.js";
 import errorHandler from "./common/middleware/error.middleware.js";
 import 'dotenv/config'
 const app = express();
+import aiUsageRouter from "./module/ai_usage/ai_usage.route.js";
 
 // Behind Render's proxy: without this every visitor looks like the same IP, so the rate limiters (and anything else
 // that reads the client's address) would treat all users as one.
@@ -74,6 +75,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/plans", plansRouter);
 app.use("/api/payments", paymentsRouter);
 app.use("/api/ai-key", aiKeyRouter);
+app.use("/api/ai-usage", aiUsageRouter);
 app.use("/api/assignments", assignmentsRouter)
 app.use("/api/exams", examRouter)
 app.use("/api/sections", sectionsRouter)

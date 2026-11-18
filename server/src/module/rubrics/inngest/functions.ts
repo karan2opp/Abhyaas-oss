@@ -1,10 +1,18 @@
 import { eq } from "drizzle-orm";
 import { inngest } from "../../../common/inngest/client.js";
 import db from "../../../common/db/index.js";
-import { exams } from "../../../common/db/schema.js";
-import { bindAiUser } from "../../../common/agent/ai_context.js";
+import { assignments, exams } from "../../../common/db/schema.js";
+import { bindAiUser, runAsAiUser } from "../../../common/agent/ai_context.js";
 import { generateRubrics } from "../rubric_agent.js";
-import { finishRubrics, loadQuestionsNeedingRubrics, saveRubric } from "../rubric.service.js";
+import {
+    finishAssignmentRubrics,
+    finishRubrics,
+    loadAssignmentQuestionsNeedingRubrics,
+    loadQuestionsNeedingRubrics,
+    saveAssignmentRubric,
+    saveRubric,
+} from "../rubric.service.js";
+import { bindUsageContext, withUsageSteps } from "../../../common/agent/usage_context.js";
 
 // Questions are sent to the model a few at a time: fewer calls than one per question, and one bad reply costs only a batch.
 const BATCH_SIZE = 5;
@@ -33,6 +41,8 @@ export const generateExamRubricsFunction = inngest.createFunction(
         const [exam] = await db.select({ createdBy: exams.createdBy, evaluationScheme: exams.evaluationScheme }).from(exams).where(eq(exams.id, examId));
         if (!exam) return;
         bindAiUser(exam.createdBy);
+        bindUsageContext({ examId });
+        step = withUsageSteps(step, { examId }, (fn) => runAsAiUser(exam.createdBy, fn));
 
         const scheme = exam.evaluationScheme?.trim() || null;
         const pending = await step.run("load-questions", () => loadQuestionsNeedingRubrics(examId));
@@ -49,4 +59,43 @@ export const generateExamRubricsFunction = inngest.createFunction(
     }
 );
 
-export const rubricFunctions = [generateExamRubricsFunction];
+/** The same, for an assignment's written questions (see scheduleAssignmentRubrics). */
+export const generateAssignmentRubricsFunction = inngest.createFunction(
+    {
+        id: "assignment-generate-rubrics",
+        retries: 2,
+        debounce: { key: "event.data.assignmentId", period: "10s" },
+        concurrency: { key: "event.data.assignmentId", limit: 1 },
+        triggers: [{ event: "assignment/rubrics.generate" }],
+        onFailure: async ({ event }) => {
+            const assignmentId = (event.data.event.data as { assignmentId?: string }).assignmentId;
+            if (assignmentId) await finishAssignmentRubrics(assignmentId, "failed");
+        },
+    },
+    async ({ event, step }) => {
+        const assignmentId = event.data.assignmentId as string;
+        // The AI work is billed to the teacher who owns the assignment, with their own key.
+        const [assignment] = await db
+            .select({ createdBy: assignments.createdBy, evaluationScheme: assignments.evaluationScheme })
+            .from(assignments)
+            .where(eq(assignments.id, assignmentId));
+        if (!assignment) return;
+        bindAiUser(assignment.createdBy);
+        bindUsageContext({ assignmentId });
+        step = withUsageSteps(step, { assignmentId }, (fn) => runAsAiUser(assignment.createdBy, fn));
+        const scheme = assignment.evaluationScheme?.trim() || null;
+        const pending = await step.run("load-questions", () => loadAssignmentQuestionsNeedingRubrics(assignmentId));
+
+        for (let i = 0; i < pending.length; i += BATCH_SIZE) {
+            const batch = pending.slice(i, i + BATCH_SIZE);
+            await step.run(`write-rubrics-${i / BATCH_SIZE}`, async () => {
+                const rubrics = await generateRubrics(batch, scheme);
+                for (const q of batch) await saveAssignmentRubric(q.id, rubrics.get(q.id)!);
+            });
+        }
+
+        await step.run("finish", () => finishAssignmentRubrics(assignmentId, "ready"));
+    }
+);
+
+export const rubricFunctions = [generateExamRubricsFunction, generateAssignmentRubricsFunction];

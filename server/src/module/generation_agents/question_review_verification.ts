@@ -49,7 +49,7 @@ export interface McqVerificationFailure {
 export async function findWrongMcqAnswers(items: McqToVerify[]): Promise<McqVerificationFailure[]> {
     if (items.length === 0) return [];
 
-    const client = await getClientForModel(env.GENERATION_MODEL);
+    const client = await getClientForModel(env.GENERATION_MODEL, "question_review_check");
     const payload = items.map((item, index) => ({
         index,
         question_text: item.questionText,

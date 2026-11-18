@@ -109,11 +109,22 @@ def extract_images(doc, page, page_index, output_dir):
     return images
 
 
+MONO_FONT_RE = re.compile(r"mono|courier|consol|menlo|inconsolata|source ?code|lucida ?console|cascadia|fira ?code", re.I)
+# PyMuPDF's span flag for a fixed-width font.
+MONO_FLAG = 8
+
+
+def is_mono_span(span):
+    return bool(span.get("flags", 0) & MONO_FLAG) or bool(MONO_FONT_RE.search(span.get("font", "") or ""))
+
+
 def extract_lines(page):
     """Per-line text with bounding boxes, in reading order. This is generic
     geometry (no question/list/table awareness) so any downstream pipeline —
     question-bank chunking, book indexing — can build its own positional
-    logic on top of it without extract.py knowing about that logic."""
+    logic on top of it without extract.py knowing about that logic.
+    "mono": most of the line is in a fixed-width font, which is how papers
+    print program code."""
     lines = []
     try:
         raw = page.get_text("dict")
@@ -121,10 +132,17 @@ def extract_lines(page):
         return lines
     for block in raw.get("blocks", []):
         for line in block.get("lines", []):
-            text = "".join(span.get("text", "") for span in line.get("spans", []))
+            spans = line.get("spans", [])
+            text = "".join(span.get("text", "") for span in spans)
             if not text.strip():
                 continue
-            lines.append({"text": text, "bbox": list(line.get("bbox", [0, 0, 0, 0]))})
+            chars = sum(len(span.get("text", "").strip()) for span in spans)
+            mono_chars = sum(len(span.get("text", "").strip()) for span in spans if is_mono_span(span))
+            lines.append({
+                "text": text,
+                "bbox": list(line.get("bbox", [0, 0, 0, 0])),
+                "mono": chars > 0 and mono_chars * 2 > chars,
+            })
     return lines
 
 

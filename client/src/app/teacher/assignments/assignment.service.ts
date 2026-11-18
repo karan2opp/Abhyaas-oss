@@ -88,6 +88,12 @@ export const deleteQuestionService = async (id: string) => {
   return res.data;
 };
 
+// Copies everything built in the assignment's working exam into the assignment, then deletes the working exam.
+export const copyQuestionsFromExamService = async (assignmentId: string, examId: string) => {
+  const res = await api.post(`/assignments/${assignmentId}/questions/from-exam`, { examId });
+  return res.data;
+};
+
 export const getQuestionsService = async (assignmentId: string) => {
   const res = await api.get(`/assignments/${assignmentId}/questions`);
   return res.data;

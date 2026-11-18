@@ -85,6 +85,62 @@
       "when": 1794237399670,
       "tag": "0011_exam_evaluation_scheme",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794323799670,
+      "tag": "0012_question_bank_answer_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794410199670,
+      "tag": "0013_question_bank_topic_tree",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794500014000,
+      "tag": "0014_question_bank_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1794500015000,
+      "tag": "0015_exam_source_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794500016000,
+      "tag": "0016_exam_ai_evaluation",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794500017000,
+      "tag": "0017_assignment_question_details",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794500018000,
+      "tag": "0018_assignment_ai_evaluation",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794500019000,
+      "tag": "0019_ai_usage_log",
+      "breakpoints": true
     }
   ]
 }
