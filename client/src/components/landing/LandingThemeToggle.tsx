@@ -24,7 +24,7 @@ export function LandingThemeToggle() {
     // First-time visitors start on the light page, whatever their device uses. (The same is done before the first paint by
     // the small script in page.tsx; this covers arriving here by clicking a link inside the app.)
     try {
-      if (!localStorage.getItem("theme")) setTheme("light");
+      if (!localStorage.getItem("abhyas-theme")) setTheme("light");
     } catch {
       // storage can be blocked; the page then just follows the device
     }

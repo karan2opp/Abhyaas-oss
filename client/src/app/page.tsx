@@ -10,12 +10,13 @@ import { Pivot } from "@/components/landing/Pivot";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { ToolsList } from "@/components/landing/ToolsList";
 import { CtaBand } from "@/components/landing/CtaBand";
+import { DarkOnAuthClick } from "@/components/landing/DarkOnAuthClick";
 
 // The landing page tells one story: exam season by hand is exhausting, what if you only had to describe the exam, here is
 // how Abhyas does it. Near-white with the brand orange, and a dark theme behind the sun/moon button in the nav. The colours are
 // theme variables (see globals.css) that follow the app's own theme.
 
-const FIRST_VISIT_LIGHT = `try{if(!localStorage.getItem("theme")){localStorage.setItem("theme","light");document.documentElement.classList.remove("dark");document.documentElement.style.colorScheme="light";}}catch(e){}`;
+const FIRST_VISIT_LIGHT = `try{if(!localStorage.getItem("abhyas-theme")){localStorage.setItem("abhyas-theme","light");document.documentElement.classList.remove("dark");document.documentElement.style.colorScheme="light";}}catch(e){}`;
 
 const navLink = "rounded-full px-3 py-2 text-sm font-semibold transition-colors hover:bg-[rgb(var(--l-ink-rgb)/0.07)]";
 
@@ -32,6 +33,7 @@ export default function LandingPage() {
       {/* A first-time visitor (no saved theme yet) starts on the light page, whatever their device uses. This runs while the page
           is being read, before anything is painted, so a dark device never flashes dark first. */}
       <script dangerouslySetInnerHTML={{ __html: FIRST_VISIT_LIGHT }} />
+      <DarkOnAuthClick />
       {/* The two thin vertical lines down the whole page, lined up with the ones in the nav. They sit behind anything positioned
           on top of them, such as the hero picture. */}
       <div aria-hidden className="pointer-events-none absolute inset-y-0 left-1/2 z-0 w-full max-w-7xl -translate-x-1/2 border-x" style={{ borderColor: RULE }} />
